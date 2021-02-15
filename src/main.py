@@ -246,12 +246,14 @@ def run(agent, game, episodes, mode):
 
 ##################################################
 
-agent_name = sys.argv[1]
-robot = sys.argv[2]
-task = sys.argv[3]
-difficulty = sys.argv[4]
-episodes = int(sys.argv[5])
-iteration = int(sys.argv[6])
+agent_name, robot, task, difficulty, episodes, iteration = 'AC', 'Point', 'Goal', 1, 1000, 1
+
+# agent_name = sys.argv[1]
+# robot = sys.argv[2]
+# task = sys.argv[3]
+# difficulty = sys.argv[4]
+# episodes = int(sys.argv[5])
+# iteration = int(sys.argv[6])
 
 directory = robot + task + difficulty
 
