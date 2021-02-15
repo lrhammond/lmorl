@@ -8,6 +8,6 @@ module purge
 module load mujoco/2.00
 module load python/anaconda3/2019.03
 
-source activate $HOME/lmorl/venv
+conda activate $HOME/lmorl/venv
 python $HOME/lmorl/src/run.py $1 $2 $3 $4 $5 $6 &> $HOME/lmorl/logs/$1-$2-$3-$4-$5-$6.txt
 conda deactivate
