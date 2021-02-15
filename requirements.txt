@@ -1,8 +1,3 @@
+# Installing safety-gym should install all other necessary dependencies including gym, numpy, etc.
 git+git://github.com/openai/safety-gym@master
-cloudpickle==1.6.0
-future==0.18.2
-Pillow==7.2.0
-pyglet==1.5.0
-scipy==1.5
 torch==1.7.1
-typing-extensions==3.7.4.3

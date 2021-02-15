@@ -13,19 +13,10 @@ git clone https://github.com/lrhammond/lmorl.git
 cd lmorl
 ```
 
-Then, set up your Python environment to taste (for example, by using `virtualenv`, or `conda`). The following instructions are given using `pip`, though your preferred package manager may vary. Install the required packages using:
+Then, set up your Python environment to taste (for example, by using `virtualenv`, or `conda`). The following instructions are given using `pip`, though your preferred package manager may vary. Install the required packages using the following (note that this step assumes a valid installation of MuJoCo at the `$HOME/.mujoco/mujoco200` and a valid license key at `$HOME/.mujoco/mjkey.txt`):
 
 ```
 pip install -r requirements.txt
-```
-
-Next, download and install the OpenAI Safety Gym repository as a sub-directory of `lmorl` (note that this step assumes a valid installation of MuJoCo at the `$HOME/.mujoco/mujoco200` and a valid license key at `$HOME/.mujoco/mjkey.txt`):
-
-```
-git clone https://github.com/openai/safety-gym.git
-cd safety-gym
-pip install -e .
-cd ..
 ```
 
 Finally, create two extra sub-directories of `lmorl` (that are used for recording and logging data from experiments) by running:
@@ -49,7 +40,7 @@ The remaining setup steps are automated, but assumes that there is a valid MuJoC
 sh -i arc.sh
 ``` 
 
-This will activate the relevant ARC modules, create a conda environment `venv` with all the required packages, and create any extra required sub-directories. It will also install the OpenAI Safety Gym repository as a sub-directory of `lmorl` and add the package to `venv`.
+This will activate the relevant ARC modules, create a `conda` environment `venv` with all the required packages, and create any extra required sub-directories.
 
 ## Running Experiments
 
