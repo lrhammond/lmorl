@@ -9,8 +9,7 @@ module load mujoco/2.00
 
 # Create new virtual environment
 conda create --prefix $HOME/lmorl/venv --copy python=3.7
-conda init bash
-conda activate $HOME/lmorl/venv 
+source activate $HOME/lmorl/venv 
 
 # Install packages
 pip install -r requirements.txt
@@ -19,7 +18,7 @@ pip install -r requirements.txt
 pip uninstall numpy
 pip install numpy==1.20.1
 
-conda deactivate
+source deactivate
 
 # Create extra directories for storing experimental output
 mkdir results logs

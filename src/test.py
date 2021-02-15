@@ -3,7 +3,7 @@
 from learners_lexicographic import *
 import os
 
-os.makedirs('./results/{}/{}'.format(directory, agent_name), exist_ok=True)
+os.makedirs('./results', exist_ok=True)
 
 if torch.cuda.is_available():
     print("Using GPU!")

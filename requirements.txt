@@ -1,4 +1,4 @@
 # Installing safety-gym should install all other necessary dependencies including gym, numpy, etc.
--e git://github.com/openai/safety-gym.git#egg=safety-gym
 torch==1.7.1
 torch-vision==0.1.6.dev0
+-e git://github.com/openai/safety-gym.git#egg=safety-gym
