@@ -3,27 +3,13 @@
 import numpy as np
 import torch
 import random
-import collections
 import time
 from itertools import count
-import os, sys, math
+import os
+import sys
 from multiprocessing import Pool
-import gym
 import safety_gym
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
-from torch.distributions import Categorical
-from torch.autograd import Variable
-
-##################################################
-
-seed = 26
-random.seed(seed)
-torch.manual_seed(seed)
-np.random.seed(seed)
+import gym
 
 ##################################################
 
@@ -41,7 +27,6 @@ else:
 ##################################################
 
 from utils import *
-from networks import *
 from learners_lexicographic import *
 from learners_other import *
 
@@ -272,6 +257,15 @@ directory = robot + task + difficulty
 
 os.makedirs('./results/{}/{}'.format(directory, agent_name), exist_ok=True)
 process_id = str(time.time())[-5:]
+
+##################################################
+
+seed = iteration
+random.seed(seed)
+torch.manual_seed(seed)
+np.random.seed(seed)
+
+##################################################
 
 def evaluate(i):
 

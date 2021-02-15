@@ -1,5 +1,16 @@
 # Other learning algorithms that we evaluate against
 
+import random
+import numpy as np
+import math
+import torch
+import torch.optim as optim
+from torch.distributions import Categorical
+from utils import *
+from networks import *
+
+##################################################
+
 class ActorCritic:
     
     # vanilla actor-critic
@@ -87,7 +98,7 @@ class ActorCritic:
         with torch.no_grad():
             target = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
             
-        loss = nn.MSELoss()(prediction, target).to(device)
+        loss = torch.nn.MSELoss()(prediction, target).to(device)
         
         self.critic_optimizer.zero_grad()
         loss.backward()
@@ -450,7 +461,7 @@ class RCPO:
         with torch.no_grad():
             target = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
             
-        loss = nn.MSELoss()(prediction, target).to(device)
+        loss = torch.nn.MSELoss()(prediction, target).to(device)
         
         self.critic_optimizer.zero_grad()
         loss.backward()
@@ -681,7 +692,7 @@ class VaR_AC:
         with torch.no_grad():
             target = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
             
-        loss = nn.MSELoss()(prediction, target).to(device)
+        loss = torch.nn.MSELoss()(prediction, target).to(device)
         
         self.critic_optimizer.zero_grad()
         loss.backward()

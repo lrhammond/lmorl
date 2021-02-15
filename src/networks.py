@@ -1,5 +1,16 @@
 # Basic network building blocks for the different learning algorithms
 
+import collections
+import random
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.transforms as T
+from utils import *
+
+##################################################
+
 class DNN(nn.Module):
 
     def __init__(self, in_size, out_size, hidden=16):
@@ -44,7 +55,6 @@ class PolicyDNN(nn.Module):
         x = F.relu(self.line2(x))
         x = self.line3(x)
         x = F.softmax(x, dim=-1)
-        #x = Categorical(F.softmax(x, dim=-1))
         
         return x    
 

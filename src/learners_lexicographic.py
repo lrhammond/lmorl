@@ -1,5 +1,17 @@
 # Our (lexicographic) learning algorithms
 
+import collections
+import random
+import numpy as np
+import math
+import torch
+import torch.optim as optim
+from torch.distributions import Categorical
+from utils import *
+from networks import *
+
+##################################################
+
 class LexDQN:
     
     # lexicographic DQN
@@ -197,7 +209,7 @@ class LexActorCritic:
         with torch.no_grad():
             target = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
             
-        loss = nn.MSELoss()(prediction, target).to(device)
+        loss = torch.nn.MSELoss()(prediction, target).to(device)
         
         self.critic_optimizer.zero_grad()
         loss.backward()
