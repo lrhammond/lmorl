@@ -11,6 +11,14 @@ from networks import *
 
 ##################################################
 
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+else:
+    device = torch.device("cpu")
+
+##################################################
+
 class ActorCritic:
     
     # vanilla actor-critic

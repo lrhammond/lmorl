@@ -246,7 +246,7 @@ def run(agent, game, episodes, mode):
 
 ##################################################
 
-agent_name, robot, task, difficulty, episodes, iteration = 'AC', 'Point', 'Goal', 1, 1000, 1
+agent_name, robot, task, difficulty, episodes, iteration = 'LPPO2nd', 'Point', 'Goal', '1', int('50'), int('1')
 
 # agent_name = sys.argv[1]
 # robot = sys.argv[2]

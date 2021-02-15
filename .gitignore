@@ -131,4 +131,6 @@ dmypy.json
 # Other
 .DS_Store
 .vscode/launch.json
-safety-gym/
+results/
+logs/
+src/safety-gym/
