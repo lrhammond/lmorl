@@ -1,5 +1,8 @@
 #!/bin/bash
 
+mkdir results
+mkdir logs
+
 system=${1-default}
 
 if [ $system == arc ]
