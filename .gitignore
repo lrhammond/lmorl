@@ -127,3 +127,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Other
+.DS_Store
+.vscode/launch.json
+safety-gym/
