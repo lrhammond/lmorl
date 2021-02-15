@@ -1,7 +1,6 @@
+git+git://github.com/openai/safety-gym@master
 cloudpickle==1.6.0
 future==0.18.2
-gym==0.18.0
-numpy==1.19
 Pillow==7.2.0
 pyglet==1.5.0
 scipy==1.5
