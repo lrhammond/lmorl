@@ -9,5 +9,5 @@ module load mujoco/2.00
 module load python/anaconda3/2019.03
 
 source activate venv
-python src/run.py $0 $1 $2 $3 $4 $5 $6 &> logs/$0-$1-$2-$3-$4-$5-$6.txt
+python src/run.py $1 $2 $3 $4 $5 $6 &> logs/$1-$2-$3-$4-$5-$6.txt
 conda deactivate
