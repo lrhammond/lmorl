@@ -37,7 +37,7 @@ cd lmorl
 The remaining setup steps are automated, but assumes that there is a valid MuJoCo license located at `$HOME/.mujoco/mjkey.txt`. Finish the setup by running:
 
 ```
-sh -i arc.sh
+bash -i arc.sh
 ``` 
 
 This will activate the relevant ARC modules, create a `conda` environment `venv` with all the required packages, and create any extra required sub-directories.
