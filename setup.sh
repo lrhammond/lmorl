@@ -7,8 +7,8 @@ then
     echo "Installing dependencies for ARC..."
     module load mujoco/2.00
     module load python/anaconda3/2019.03
-    conda create --prefix venv --copy python=3.6
-    source activate venv 
+    conda create --prefix $HOME/venv --copy python=3.6
+    source activate $HOME/venv 
 else
     echo "Installing dependencies..."
     virtualenv venv
