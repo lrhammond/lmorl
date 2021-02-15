@@ -23,7 +23,7 @@ Finally, create two extra sub-directories of `lmorl` (that are used for recordin
 
 ### ARC
 
-If using [ARC](https://www.arc.ox.ac.uk/) then run `sh -i arc.sh`. This will activate the relevant modules, create a virtual environment `venv` with all the required packages, and create any extra required sub-directories. It will also install the OpenAI Safety Gym repository as a sub-directory of `lmorl` and add the package to `venv`.
+If using [ARC](https://www.arc.ox.ac.uk/) then run `sh -i arc.sh` (note that this setup assumes that the `lmorl` repo is located at `$HOME/lmorl`). This will activate the relevant modules, create a virtual environment `venv` with all the required packages, and create any extra required sub-directories. It will also install the OpenAI Safety Gym repository as a sub-directory of `lmorl` and add the package to `venv`.
 
 ## Running Experiments
 
