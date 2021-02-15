@@ -16,10 +16,11 @@ cd lmorl
 Then, set up your Python environment to taste (for example, by using `virtualenv`, or `conda`). The following instructions are given using `pip`, though your preferred package manager may vary. Install the required packages using the following (note that this step assumes a valid installation of MuJoCo at the `$HOME/.mujoco/mujoco200` and a valid license key at `$HOME/.mujoco/mjkey.txt`):
 
 ```
+pip install numpy==1.20.1
 pip install -r requirements.txt
 ```
 
-Finally, create two extra sub-directories of `lmorl` (that are used for recording and logging data from experiments) by running:
+In the commands above, `numpy` is deliberately installed first due to a supposed (but unsubstantiated) inconsistency with `safety-gym`. Finally, create two extra sub-directories of `lmorl` (that are used for recording and logging data from experiments) by running:
 
 ```
 mkdir results logs
