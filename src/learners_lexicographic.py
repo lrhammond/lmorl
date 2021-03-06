@@ -1,24 +1,32 @@
 # Our (lexicographic) learning algorithms
 
-import collections
-import random
-import numpy as np
-import math
-import torch
-import torch.optim as optim
-from torch.distributions import Categorical
-from utils import *
 from networks import *
 
-##################################################
+import math
+import random
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    torch.set_default_tensor_type('torch.cuda.FloatTensor')
-else:
-    device = torch.device("cpu")
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import torchvision.transforms as T
+from torch.distributions import Categorical
+from torch.autograd import Variable
 
-##################################################
+# Constants
+UPDATE_EVERY = 4
+BUFFER_SIZE = int(1e6)
+BATCH_SIZE = 32
+EPSILON = 0.05
+LAMBDA_RL_2 = 0.05
+UPDATE_EVERY_EPS = 32
+SLACK = 0.04
+TOL = 1
+CONVERGENCE_LENGTH = 1000
+CONVERGENCE_DEVIATION = 0.04
+TOL2 = 1
+
+NO_CUDA = True
 
 class LexDQN:
     
@@ -46,7 +54,7 @@ class LexDQN:
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
         self.optimizer = optim.Adam(self.model.parameters())
         
-        if torch.cuda.is_available():
+        if (torch.cuda.is_available() and not NO_CUDA):
             self.model.cuda()
     
     
@@ -113,6 +121,12 @@ class LexDQN:
         
         self.model.eval()
 
+    def save_model(self, root):
+        torch.save(self.model.state_dict(), '{}-model.pt'.format(root))
+
+    def load_model(self, root):
+        self.model.load_state_dict('{}-model.pt'.format(root))
+
 ##################################################
 
 class LexActorCritic:
@@ -158,7 +172,7 @@ class LexActorCritic:
             self.grad_j = [0.0 for _ in range(reward_size - 1)]
             self.recent_grads = [collections.deque(maxlen=25) for i in range(reward_size - 1)]
         
-        if torch.cuda.is_available():
+        if (torch.cuda.is_available() and not NO_CUDA):
             self.actor.cuda()
             self.critic.cuda()
             if self.second_order:
@@ -217,7 +231,7 @@ class LexActorCritic:
         with torch.no_grad():
             target = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
             
-        loss = torch.nn.MSELoss()(prediction, target).to(device)
+        loss = nn.MSELoss()(prediction, target).to(device)
         
         self.critic_optimizer.zero_grad()
         loss.backward()
@@ -357,26 +371,26 @@ class LexActorCritic:
             new_probs = torch.exp(new_log_probs).to(device)
             ratios = (new_probs / old_probs).to(device)
             first_order_weighted_advantages = torch.sum(first_order_weights * advantage[:,0:reward_range], dim=1).to(device)
-            kl_penalty = (new_log_probs - old_log_probs).to(device)
+            kl_divergences = (new_probs * (new_log_probs - old_log_probs)).to(device)
             relative_kl_weights = [self.kl_weight * first_order_weights[i] / sum(first_order_weights) for i in range(reward_range)]
             relative_kl_weights += [0.0 for _ in range(reward_range, self.reward_size)]
             # This will be slow in Pytorch because of the lack of forward-mode differentiation
             if self.second_order:
                 ratio_grads = torch.stack(tuple([torch.cat([torch.flatten(g) for g in torch.autograd.grad(r.to(device), self.actor.parameters(), retain_graph=True)]) for r in ratios]), dim=0).to(device)
-                kl_grads = torch.stack(tuple([torch.cat([torch.flatten(g) for g in torch.autograd.grad(kl.to(device), self.actor.parameters(), retain_graph=True)]) for kl in kl_penalty]), dim=0).to(device)
+                kl_grads = torch.stack(tuple([torch.cat([torch.flatten(g) for g in torch.autograd.grad(kl.to(device), self.actor.parameters(), retain_graph=True)]) for kl in kl_divergences]), dim=0).to(device)
                 second_order_weighted_advantages = torch.sum(second_order_weights * advantage[:,0:reward_range], dim=1).to(device)
                 second_order_terms = [self.lamb[i]((ratio_grads * torch.unsqueeze(second_order_weighted_advantages, dim=1) - relative_kl_weights[i] * kl_grads).to(device)) for i in range(reward_range - 1)]
-                loss =  -(ratios * first_order_weighted_advantages - self.kl_weight * kl_penalty + sum(second_order_terms)).mean().to(device)
+                loss =  -(ratios * first_order_weighted_advantages - self.kl_weight * kl_divergences + sum(second_order_terms)).mean().to(device)
                 for i in range(self.reward_size):
-                    self.recent_losses[i].append((ratios * advantage[:,i] - relative_kl_weights[i] * kl_penalty).mean())
+                    self.recent_losses[i].append((ratios * advantage[:,i] - relative_kl_weights[i] * kl_divergences).mean())
                     if i != self.reward_size - 1:
                         self.recent_grads[i].append((ratio_grads * torch.unsqueeze(advantage[:,i], dim=1) - relative_kl_weights[i] * kl_grads).mean(dim=0))
             else:
-                loss = -(ratios * first_order_weighted_advantages - self.kl_weight * kl_penalty).mean().to(device)
+                loss = -(ratios * first_order_weighted_advantages - self.kl_weight * kl_divergences).mean().to(device)
                 for i in range(self.reward_size):
-                    self.recent_losses[i].append((ratios * advantage[:,i] - relative_kl_weights[i] * kl_penalty).mean())
+                    self.recent_losses[i].append((ratios * advantage[:,i] - relative_kl_weights[i] * kl_divergences).mean())
             # Update KL weight term as in the original PPO paper
-            if kl_penalty.mean() < self.kl_target / 1.5:
+            if kl_divergences.mean() < self.kl_target / 1.5:
                 self.kl_weight *= 0.5
             else:
                 self.kl_weight *= 2

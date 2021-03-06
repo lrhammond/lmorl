@@ -1,23 +1,33 @@
 # Other learning algorithms that we evaluate against
 
-import random
 import numpy as np
-import math
-import torch
-import torch.optim as optim
-from torch.distributions import Categorical
-from utils import *
+
 from networks import *
 
-##################################################
+import math, random
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    torch.set_default_tensor_type('torch.cuda.FloatTensor')
-else:
-    device = torch.device("cpu")
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import torchvision.transforms as T
+from torch.distributions import Categorical
+from torch.autograd import Variable
 
-##################################################
+# Constants
+UPDATE_EVERY = 4
+BUFFER_SIZE = int(1e6)
+BATCH_SIZE = 32
+EPSILON = 0.05
+LAMBDA_RL_2 = 0.05
+UPDATE_EVERY_EPS = 32
+SLACK = 0.04
+TOL = 1
+CONVERGENCE_LENGTH = 1000
+CONVERGENCE_DEVIATION = 0.04
+TOL2 = 1
+
+NO_CUDA = True
 
 class ActorCritic:
     
@@ -39,7 +49,7 @@ class ActorCritic:
         self.actor_optimizer = optim.Adam(self.actor.parameters())
         self.critic_optimizer = optim.Adam(self.critic.parameters())
         
-        if torch.cuda.is_available():
+        if (torch.cuda.is_available() and not NO_CUDA) and not NO_CUDA:
             self.actor.cuda()
             self.critic.cuda()
         
@@ -106,7 +116,7 @@ class ActorCritic:
         with torch.no_grad():
             target = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
             
-        loss = torch.nn.MSELoss()(prediction, target).to(device)
+        loss = nn.MSELoss()(prediction, target).to(device)
         
         self.critic_optimizer.zero_grad()
         loss.backward()
@@ -118,6 +128,14 @@ class ActorCritic:
     def update(self, experiences):
         self.update_actor(experiences)
         self.update_critic(experiences)
+
+    def save_model(self, root):
+        torch.save(self.actor.state_dict(), '{}-actor.pt'.format(root))
+        torch.save(self.critic.state_dict(), '{}-critic.pt'.format(root))
+
+    def load_model(self, root):
+        self.actor.load_state_dict('{}-actor.pt'.format(root))
+        self.critic.load_state_dict('{}-critic.pt'.format(root))
 
 ##################################################
 
@@ -136,7 +154,7 @@ class DQN:
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
         self.optimizer = optim.Adam(self.model.parameters())
         
-        if torch.cuda.is_available():
+        if (torch.cuda.is_available() and not NO_CUDA):
             self.model.cuda()
         
     
@@ -178,6 +196,12 @@ class DQN:
         self.optimizer.step()
         
         self.model.eval()
+
+    def save_model(self, root):
+        torch.save(self.model.state_dict(), '{}-model.pt'.format(root))
+
+    def load_model(self, root):
+        self.model.load_state_dict('{}-model.pt'.format(root))
 
 ##################################################
 
@@ -249,6 +273,12 @@ class RandomAgent:
     def step(self, state, action, reward, next_state, done):
         pass
 
+    def save_model(self,root):
+        pass
+
+    def load_model(self,root):
+        pass
+
 ##################################################
 
 class AproPO:
@@ -315,7 +345,7 @@ class AproPO:
                 
     def augment(self, state, kappa):
         
-        dtype = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
+        dtype = torch.cuda.FloatTensor if (torch.cuda.is_available() and not NO_CUDA) else torch.FloatTensor
         t = torch.cat((state.flatten(), torch.tensor([kappa]).type(dtype)), 0).unsqueeze(0)
         
         return t
@@ -369,6 +399,12 @@ class AproPO:
         
         self.lamb = self.project(self.lamb + LAMBDA_RL_2 * lamb_grad)
 
+    def save_model(self, root):
+        self.best_response_oracle.save_model(root)
+
+    def load_model(self, root):
+        self.best_response_oracle.load_model(root)
+
 ##################################################
 
 class RCPO:
@@ -396,7 +432,7 @@ class RCPO:
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=0.001)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=0.001)
         
-        if torch.cuda.is_available():
+        if (torch.cuda.is_available() and not NO_CUDA):
             self.actor.cuda()
             self.critic.cuda()
         
@@ -469,7 +505,7 @@ class RCPO:
         with torch.no_grad():
             target = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
             
-        loss = torch.nn.MSELoss()(prediction, target).to(device)
+        loss = nn.MSELoss()(prediction, target).to(device)
         
         self.critic_optimizer.zero_grad()
         loss.backward()
@@ -484,6 +520,14 @@ class RCPO:
         cost = sum(rewards[:,1])
         self.lamb += self.LAMBDA_LR * (cost - self.constraint)
         self.lamb = max(self.lamb, 0)
+
+    def save_model(self, root):
+        torch.save(self.actor.state_dict(), '{}-actor.pt'.format(root))
+        torch.save(self.critic.state_dict(), '{}-critic.pt'.format(root))
+
+    def load_model(self, root):
+        self.actor.load_state_dict('{}-actor.pt'.format(root))
+        self.critic.load_state_dict('{}-critic.pt'.format(root))
 
 ##################################################
 
@@ -512,7 +556,7 @@ class VaR_PG:
         
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
         
-        if torch.cuda.is_available():
+        if (torch.cuda.is_available() and not NO_CUDA):
             self.actor.cuda()
         
     
@@ -573,7 +617,13 @@ class VaR_PG:
         states, _, rewards, next_states, dones = experiences
         cost = 1 if sum(rewards[:,1]) > self.alpha else 0
         self.lamb += self.LAMBDA_LR * (cost - self.beta)
-        self.lamb = max(self.lamb, 0) 
+        self.lamb = max(self.lamb, 0)
+
+    def save_model(self, root):
+        torch.save(self.actor.state_dict(), '{}-actor.pt'.format(root))
+
+    def load_model(self, root):
+        self.actor.load_state_dict('{}-actor.pt'.format(root))
         
 ##################################################
 
@@ -607,7 +657,7 @@ class VaR_AC:
         self.actor_optimizer = optim.Adam(self.actor.parameters())
         self.critic_optimizer = optim.Adam(self.critic.parameters())
         
-        if torch.cuda.is_available():
+        if (torch.cuda.is_available() and not NO_CUDA):
             self.actor.cuda()
             self.critic.cuda()
         
@@ -628,7 +678,7 @@ class VaR_AC:
     
     def augment(self, state, cost):
         
-        dtype = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
+        dtype = torch.cuda.FloatTensor if (torch.cuda.is_available() and not NO_CUDA) else torch.FloatTensor
         t = torch.cat((state.flatten(), torch.tensor([cost]).type(dtype)), 0).unsqueeze(0)
         
         return t
@@ -700,7 +750,7 @@ class VaR_AC:
         with torch.no_grad():
             target = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
             
-        loss = torch.nn.MSELoss()(prediction, target).to(device)
+        loss = nn.MSELoss()(prediction, target).to(device)
         
         self.critic_optimizer.zero_grad()
         loss.backward()
@@ -716,3 +766,11 @@ class VaR_AC:
         cost = 1 if states[-1][-1] < 0 else 0
         self.lamb += self.LAMBDA_LR * (cost - self.beta)
         self.lamb = max(self.lamb, 0)
+
+    def save_model(self, root):
+        torch.save(self.actor.state_dict(), '{}-actor.pt'.format(root))
+        torch.save(self.critic.state_dict(), '{}-critic.pt'.format(root))
+
+    def load_model(self, root):
+        self.actor.load_state_dict('{}-actor.pt'.format(root))
+        self.critic.load_state_dict('{}-critic.pt'.format(root))
