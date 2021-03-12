@@ -15,7 +15,7 @@ import gym_safety
 import open_safety
 
 from open_safety.envs.balance_bot_env import BalanceBotEnv
-from open_safety.envs.puck_env import PuckEnv
+# from open_safety.envs.puck_env import PuckEnv
 
 import torch
 import torch.nn as nn
@@ -214,8 +214,8 @@ def run_episodic(agent, game, episodes, max_ep_length, mode, save_location, int_
 
     if game == 'BalanceBotEnv':
         env = BalanceBotEnv()
-    elif game == 'PuckEnv':
-        env = PuckEnv()
+    # elif game == 'PuckEnv':
+    #     env = PuckEnv()
     else:
         env = gym.make(game + '-v0')
 
@@ -291,10 +291,13 @@ def run_interacts(agent, game, interacts, max_ep_length, mode, save_location, in
 
     if game == 'BalanceBotEnv':
         env = BalanceBotEnv()
-    elif game == 'PuckEnv':
-        env = PuckEnv()
+    # elif game == 'PuckEnv':
+    #     env = PuckEnv()
     else:
         env = gym.make(game + '-v0')
+
+    if game == 'MountainCar':
+        int_action = True
 
     state = env.reset()
     state = np.expand_dims(state, axis=0)
@@ -361,11 +364,12 @@ def run_interacts(agent, game, interacts, max_ep_length, mode, save_location, in
 
 ##################################################
 
+agent_name, game, interacts, iterations = 'AC', 'MountainCar', 5000000, 1
 
-agent_name = sys.argv[1]
-game = sys.argv[2]
-interacts = int(sys.argv[3])
-iterations = int(sys.argv[4])
+# agent_name = sys.argv[1]
+# game = sys.argv[2]
+# interacts = int(sys.argv[3])
+# iterations = int(sys.argv[4])
 
 save_location = 'results'
 
@@ -408,11 +412,17 @@ def evaluate(i):
         i_s = 32
         a_s = 2
         hid = 128
-        cont = True        
+        cont = True
+    if game == 'MountainCar':
+        i_s = 2
+        a_s = 2
+        hid = 16
+        cont = False     
         
     agent, mode = make_agent(agent_name, in_size=i_s, action_size=a_s, hidden=hid, network='DNN', continuous=cont, alt_lex=False)    
     run_interacts(agent, game, interacts, 1000, mode, save_location, int_action, i)
-    
-p = Pool(iterations)
-p.map(evaluate, list(range(iterations)))
 
+evaluate(1)
+
+# p = Pool(iterations)
+# p.map(evaluate, list(range(iterations)))
