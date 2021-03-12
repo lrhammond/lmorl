@@ -1,23 +1,26 @@
 # Basic network building blocks for the different learning algorithms
 
 import collections
-import random
+
 import numpy as np
+
+import random
+
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
-from utils import *
+from torch.distributions import Categorical
+from torch.autograd import Variable
 
-##################################################
+##if torch.cuda.is_available():
+##    device = torch.device("cuda")
+##    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+##else:
+##    device = torch.device("cpu")
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    torch.set_default_tensor_type('torch.cuda.FloatTensor')
-else:
-    device = torch.device("cpu")
-
-################################################## 
+device = torch.device("cpu")
 
 class DNN(nn.Module):
 
@@ -63,6 +66,7 @@ class PolicyDNN(nn.Module):
         x = F.relu(self.line2(x))
         x = self.line3(x)
         x = F.softmax(x, dim=-1)
+        #x = Categorical(F.softmax(x, dim=-1))
         
         return x    
 
@@ -362,8 +366,8 @@ class ReplayBuffer:
             experiences = random.sample(self.memory, k=self.batch_size)
         
         states = torch.from_numpy(np.vstack([e.state.cpu() for e in experiences if e is not None])).float().to(device)
-        # actions = torch.from_numpy(np.vstack([e.action.cpu() for e in experiences if e is not None])).float().to(device)
-        actions = torch.from_numpy(np.vstack([int(e.action) for e in experiences if e is not None])).long().to(device)
+        actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(device)
+        #actions = torch.from_numpy(np.vstack([int(e.action) for e in experiences if e is not None])).long().to(device)
         rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
         next_states = torch.from_numpy(np.vstack([e.next_state.cpu() for e in experiences if e is not None])).float().to(device)
         dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None]).astype(np.uint8)).float().to(device)
