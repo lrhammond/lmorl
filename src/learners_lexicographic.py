@@ -93,8 +93,7 @@ class LexDQN:
         self.memory.add(state, action, reward, next_state, done)
         
         if self.t % UPDATE_EVERY == 0 and len(self.memory) > BATCH_SIZE:
-            experience = self.memory.sample()
-            self.update(experience)
+            self.update(self.memory.sample())
                 
             
     def update(self, experiences):
@@ -205,8 +204,7 @@ class LexActorCritic:
         self.memory.add(state, action, reward, next_state, done)
 
         if self.t % BATCH_SIZE == 0:
-            self.update(self.memory.sample(sample_all=True))
-            self.memory.memory.clear()
+            self.update(self.memory.sample())
 
             
     def update_actor(self, experiences):
