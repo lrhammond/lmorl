@@ -1,303 +1,341 @@
-# Test file for running on ARC (without MuJoCo)
+# Main file for running experiments
 
+import numpy as np
+
+import random
+import collections
+import time
+from itertools import count
+import os, sys, math
+from multiprocessing import Pool
+
+import gym
+#import safety_gym
+import gym_safety
+import open_safety
+
+from open_safety.envs.balance_bot_env import BalanceBotEnv
+from open_safety.envs.puck_env import PuckEnv
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import torchvision.transforms as T
+from torch.distributions import Categorical
+from torch.autograd import Variable
+
+##################################################
+
+from utils import *
+from networks import *
 from learners_lexicographic import *
-import os
+from learners_other import *
 
-os.makedirs('./results', exist_ok=True)
+##################################################
 
-if torch.cuda.is_available():
-    print("Using GPU!")
-    device = torch.device("cuda")
-    torch.set_default_tensor_type('torch.cuda.FloatTensor')
-else:
-    print("Using CPU!")
-    device = torch.device("cpu")
 
-class OrbGame:
-    
-    def __init__(self, grid_size=10, greens=8, reds=8):
-        
-        assert type(greens) == int and type(reds) == int
-        assert greens >= 0 and reds >= 0
-        
-        self.action_space = [0,1,2,3,4]
-        self.grid_size = grid_size
-        
-        #self.grid = np.asarray([[[0,0,0] for _ in range(grid_size)] for _ in range(grid_size)])
-        
-        self.greens = greens
-        self.reds = reds
-        
-        self.init_grid()
-                
-    def init_grid(self):
-        
-        self.grid = np.zeros((self.grid_size, self.grid_size, 3), dtype=int)
-        
-        # place the agent
-        
-        self.x = random.randint(0, self.grid_size-1)
-        self.y = random.randint(0, self.grid_size-1)
-        
-        self.grid[self.x, self.y, 0] = 1
-        
-        # place the green orbs
-        
-        i = self.greens
-        while i > 0:
-            x = random.randint(0, self.grid_size-1)
-            y = random.randint(0, self.grid_size-1)
-            if np.count_nonzero(self.grid[x,y,:]) == 0:
-                self.grid[x,y,1] = 1
-                i -= 1
-                
-        # place the red orbs
-                
-        i = self.reds
-        while i > 0:
-            x = random.randint(0, self.grid_size-1)
-            y = random.randint(0, self.grid_size-1)
-            if np.count_nonzero(self.grid[x,y,:]) == 0:
-                self.grid[x,y,2] = 1
-                i -= 1
-                
-        self.start_grid = np.array(self.grid)     
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = 'cpu'
 
-    def reset(self):
-        self.grid = np.array(self.start_grid)
-        self.total_greens = self.greens
-        return self.preprocess(self.grid)
-    
-    def preprocess(self, grid):
-        # batch, dim1, dim2, features
-        
-        state = np.reshape(grid, [1, self.grid_size, self.grid_size, 3])
-        state = np.moveaxis(state,3,1) # channels must be in the 2nd axis for the CNN
-        state = np.reshape(state, [1, self.grid_size*self.grid_size*3])
-        state = torch.tensor(state).float().to(device)
-        return state       
-        
-    def jiggle(self):
-        
-        red_collisions = 0
-        green_collisions = 0
-        
-        # jiggle the reds
-        
-        exceptions = []
-        
-        for x in range(0, self.grid_size):
-            for y in range(0, self.grid_size):
-                if self.grid[x,y,2] == 1 and (x,y) not in exceptions:
-                    i,j = random.choice([(0,0),(-1,0),(1,0),(0,-1),(0,1)])
-                    if (x!=0 or i!=-1) and (y!=0 or j!=-1) and (x!=self.grid_size-1 or i!=1) and (y!=self.grid_size-1 or j!=1):
-                        if np.count_nonzero(self.grid[x+i,y+j,:]) == 0:
-                            self.grid[x,y,2] = 0
-                            self.grid[x+i, y+j, 2] = 1
-                            exceptions.append((x+i, y+j))
-                        elif self.grid[x+i, y+j, 0] == 1:
-                            self.grid[x,y,2] = 0
-                            red_collisions += 1
-        
-        # jiggle the greens
-        
-        exceptions = []
-        
-        for x in range(0, self.grid_size):
-            for y in range(0, self.grid_size):
-                if self.grid[x,y,1] == 1 and (x,y) not in exceptions:
-                    i,j = random.choice([(0,0),(-1,0),(1,0),(0,-1),(0,1)])
-                    if (x!=0 or i!=-1) and (y!=0 or j!=-1) and (x!=self.grid_size-1 or i!=1) and (y!=self.grid_size-1 or j!=1):
-                        if np.count_nonzero(self.grid[x+i,y+j,:]) == 0:
-                            self.grid[x,y,1] = 0
-                            self.grid[x+i,y+j,1] = 1
-                            exceptions.append((x+i, y+j))
-                        elif self.grid[x+i, y+j, 0] == 1:
-                            self.grid[x,y,1] = 0
-                            green_collisions += 1
-                    
-        return green_collisions, red_collisions      
-        
-    def step(self, action):
-        
-        # 0 = left, 1 = up, 2 = right, 3 = down, 4 = pass
-        
-        assert action in [0,1,2,3,4]
-        
-        if action == 0 and self.x != 0:
-            
-            self.grid[self.x, self.y, 0] = 0
-            self.x -= 1
-            self.grid[self.x, self.y, 0] = 1
-            
-        elif action == 1 and self.y != self.grid_size-1:
-                
-            self.grid[self.x, self.y, 0] = 0
-            self.y += 1
-            self.grid[self.x, self.y, 0] = 1
-        
-        elif action == 2 and self.x != self.grid_size-1:
-                
-            self.grid[self.x, self.y, 0] = 0
-            self.x += 1
-            self.grid[self.x, self.y, 0] = 1
-        
-        elif action == 3 and self.y != 0:
-                
-            self.grid[self.x, self.y, 0] = 0
-            self.y -= 1
-            self.grid[self.x, self.y, 0] = 1
-            
-        elif action == 4:
-            pass
+##if torch.cuda.is_available():
+##    print("Using GPU!")
+##    device = torch.device("cuda")
+##    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+##else:
+##    print("Using CPU!")
+##    device = torch.device("cpu")
 
-        # g = greens hit, r = reds hit
+device = torch.device("cpu")
+
+##################################################
+
+def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN', continuous=False, alt_lex=False):
+
+    prioritise_performance_over_safety = False
+
+    if agent_name=='AC':
+        agent = ActorCritic(action_size=action_size, in_size=in_size, 
+                                network=network, hidden=hidden, continuous=continuous)
+        mode = 1
         
-        if self.grid[self.x, self.y, 1] == 1:
-            self.grid[self.x, self.y, 1] = 0
-            g = 1
-            r = 0
-        elif self.grid[self.x, self.y, 2] == 1:
-            self.grid[self.x, self.y, 2] = 0
-            g = 0
-            r = 1
+    elif agent_name=='DQN':
+        agent = DQN(action_size=action_size, in_size=in_size, 
+                        network=network, hidden=hidden)
+        mode = 1
+        
+    elif agent_name=='LDQN':
+        agent = LexDQN(action_size=action_size, in_size=in_size, reward_size=2, 
+                           network=network, hidden=hidden)
+        if prioritise_performance_over_safety:
+            mode = 5
         else:
-            g = 0
-            r = 0
-
-        #gc, rc = self.jiggle()
-        #g += gc
-        #r += rc
-        
-        self.total_greens -= g
-        
-        # the episode is over when there are no more greens
-        done = (self.total_greens == 0)
-        
-        # if a red is hit, the episode ends with probability 1
-        #if r > 0: # and np.random.choice([True,False], p=[0.3, 0.7]):
-        #    done = True
+            mode = 3
             
-        # there is a certain constant probability that the episode will end
-        # if a new square is entered each time step then all squares can be entered wp 0.5
-        # th = 2**(-1/(self.grid_size**2))
-        th = 0.01
-        if np.random.choice([True,False], p=[1-th, th]):
-            done = True
-            
-        state = self.preprocess(self.grid)
+    elif agent_name=='RCPO':
+        agent = RCPO(action_size=action_size, constraint=0.1, in_size=in_size, 
+                         network=network, hidden=hidden, continuous=continuous)
+        mode = 4
         
-        return state, [g, r], done, None
-    
-    def render(self):
-        s = ''
-        for y in range(0, self.grid_size): #range(self.grid_size-1, -1, -1):
-            for x in range(0, self.grid_size):
-                if int(self.grid[x,y,0]) == 1:
-                    s += 'A'
-                elif int(self.grid[x,y,1]) == 1:
-                    s += 'G'
-                elif int(self.grid[x,y,2]) == 1:
-                    s += 'R'
-                else:
-                    s += '.'
-            s += '   '
-            for x in range(0, self.grid_size):
-                if int(self.grid[x,y,0]) == 1:
-                    s += 'X'
-                else:
-                    s += '.'
-            s += '   '
-            for x in range(0, self.grid_size):
-                if int(self.grid[x,y,1]) == 1:
-                    s += 'X'
-                else:
-                    s += '.'
-            s += '   '
-            for x in range(0, self.grid_size):
-                if int(self.grid[x,y,2]) == 1:
-                    s += 'X'
-                else:
-                    s += '.'
+    elif agent_name=='VaR_PG':
+        agent = VaR_PG(action_size=action_size, alpha=1, beta=0.95, in_size=in_size, 
+                           network=network, hidden=hidden, continuous=continuous)
+        mode = 4
+        
+    elif agent_name=='VaR_AC':
+        agent = VaR_AC(action_size=action_size, alpha=1, beta=0.95, in_size=in_size, 
+                           network=network, hidden=hidden, continuous=continuous)
+        mode = 4
+        
+    elif agent_name=='AproPO':
+        constraints = [(0.3, 0.5),(0.0, 0.1)]
+        agent = AproPO(action_size=action_size, 
+                       in_size=in_size, 
+                       constraints=constraints,
+                       reward_size=2,
+                       network=network, 
+                       hidden=16,
+                       continuous=continuous)
+        mode = 4
+     
+    elif agent_name=='tabular':
+        agent = Tabular(action_size=action_size)
+        mode = 1
+        
+    elif agent_name=='random':
+        agent = RandomAgent(action_size=action_size, continuous=continuous)
+        mode = 1
+
+    elif agent_name=='LA2C':
+        agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=False,
+                               reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
+        if prioritise_performance_over_safety:
+            mode = 5
+        else:
+            mode = 3
             
-            s += '\n'
-        print(s)
-        print('greens: {}'.format(self.total_greens))
-        print()
+    elif agent_name=='seqLA2C':
+        agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=False,
+                               reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
+        if prioritise_performance_over_safety:
+            mode = 5
+        else:
+            mode = 3
 
-        print('#################################################')
-        print()
-    
-    def close(self):
-        pass
+    elif agent_name=='LPPO':
+        agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=False,
+                               reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
+        if prioritise_performance_over_safety:
+            mode = 5
+        else:
+            mode = 3
+            
+    elif agent_name=='seqLPPO':
+        agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=False,
+                               reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
+        if prioritise_performance_over_safety:
+            mode = 5
+        else:
+            mode = 3
 
-grid_size = 5
-greens = grid_size
-reds   = 2*grid_size
-env = OrbGame(grid_size=grid_size, greens=greens, reds=reds)
+    elif agent_name=='LA2C2nd':
+        agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
+                               reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
+        if prioritise_performance_over_safety:
+            mode = 5
+        else:
+            mode = 3
+            
+    elif agent_name=='seqLA2C2nd':
+        agent = ActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
+                               reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
+        if prioritise_performance_over_safety:
+            mode = 5
+        else:
+            mode = 3
 
-in_size = grid_size*grid_size*3
-action_size=4
-hidden = 8
+    elif agent_name=='LPPO2nd':
+        agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=True,
+                               reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
+        if prioritise_performance_over_safety:
+            mode = 5
+        else:
+            mode = 3
+            
+    elif agent_name=='seqLPPO2nd':
+        agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=True,
+                               reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
+        if prioritise_performance_over_safety:
+            mode = 5
+        else:
+            mode = 3
+        
+    else:
+        print('invalid agent specification')
+        assert False
+        
+    return agent, mode
 
-mode = 3
+##################################################
 
-episodes = 10000
 
-agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=True,
-                               reward_size=2, network='DNN', hidden=hidden, sequential=False)
+def run(agent, game, steps, mode, int_action=False):
 
-mean_score = []
-mean_bombs = []
-
-with open('./results/test.txt', 'w') as f:
-    f.write('TEST\n')
-
-for i in range(episodes+1):
+    if game == 'BalanceBotEnv':
+        env = BalanceBotEnv(render=True)
+    elif game == 'PuckEnv':
+        env = PuckEnv()
+    else:
+        env = gym.make(game + '-v0')
 
     state = env.reset()
-    done = False
+    state = np.expand_dims(state, axis=0)
+    state = torch.tensor(state).float().to(device)
 
-    score = 0
-    bombs = 0
+    env.render()
 
-    #env.render()
-    while not done:
+    for step in range(interacts):
 
         action = agent.act(state)
 
-        #print('ACTION: {}'.format(action))
-        #print('#################################################')
-        
-        next_state, rewards, done, _ = env.step(action)
-        
-        if mode==1:
-            r = rewards[0]
-        elif mode==2:
-            r = rewards[0]-rewards[1]
-        elif mode==3:
-            r = [-rewards[1], rewards[0]]
-        elif mode==4:
-            r = rewards
-        elif mode==5:
-            r = [rewards[0], -rewards[1]]
+        if type(action)!=int:
+            action = action.squeeze().cpu()
+            if int_action:
+                action = int(action)
+
+        #print(action)
+        if step % 100 == 0:
+            print(action)
+
+        next_state, reward, done, info = env.step(action)
+        next_state = np.expand_dims(next_state, axis=0)
+        next_state = torch.tensor(next_state).float().to(device)
+
+        env.render()
             
-        agent.step(state, action, r, next_state, done)
-        state = next_state
+        try:
+            cost = info['cost']
+        except:
+            try:
+                cost = info['constraint_costs'][0]
+            except:
+                cost = 0
+                #print('cost exception, ', info)
+                
+        if mode==1:
+            r = reward
+        elif mode==2:
+            r = reward-cost
+        elif mode==3:
+            r = [-cost, reward]
+        elif mode==4:
+            r = [reward, cost]
+        elif mode==5:
+            r = [reward, -cost]
 
-        score += rewards[0]
-        bombs += rewards[1]
+        #agent.step(state, action, r, next_state, done)
 
-        #env.render()
+        if done:
+            step = 0
+            state = env.reset()
+            state = np.expand_dims(state, axis=0)
+            state = torch.tensor(state).float().to(device)
+        else:
+            state = next_state
 
-    #print('#################################################')
+    env.close()
+    
+##################################################
 
-    with open('./results/test.txt', 'w') as f:
-        f.write('{},{}\n'.format(score,bombs))
 
-    mean_score.append(float(score))
-    mean_bombs.append(float(bombs))
+agent_name = 'AC'
+game = 'BalanceBotEnv'
+interacts = 10000
+steps = 1000
+int_action=False
 
-    if i % 1000 == 0 and i > 0:
-        # print("Episodes: {}    Mean Score: {}    Mean Bombs: {}".format(i, torch.tensor(mean_score)[-1000:].mean(), torch.tensor(mean_bombs)[-1000:].mean()))
-        print("Episodes: {}    Mean Score: {}    Mean Bombs: {}".format(i, torch.tensor(mean_score).mean(), torch.tensor(mean_bombs).mean()))
+if game == 'CartSafe':
+    i_s = 4
+    a_s = 2
+    hid = 32
+    cont = False
+    int_action=True
+if game == 'GridNav':
+    i_s = 625
+    a_s = 4
+    hid = 2048
+    cont = False
+    int_action = True
+if game == 'MountainCarContinuousSafe':
+    i_s = 2
+    a_s = 2
+    hid = 16
+    cont = True
+if game == 'PuckEnv':
+    i_s = 18
+    a_s = 2
+    hid = 128
+    cont = True
+if game == 'BalanceBotEnv':
+    i_s = 32
+    a_s = 2
+    hid = 128
+    cont = True
+if game == 'MountainCar':
+    i_s = 2
+    a_s = 3
+    hid = 32
+    cont = False
+    int_action=True
+        
+agent, mode = make_agent(agent_name, in_size=i_s, action_size=a_s, hidden=hid, network='DNN', continuous=cont, alt_lex=False)
+
+agent.load_model('../results/{}/{}/{}-47868-2'.format(game, agent_name, agent_name))
+
+for param in agent.critic.parameters():
+    print(param.shape)
+    print(param.data)
+    print()
+
+print('adfasdfasdf')
+    
+for param in agent.actor.parameters():
+    print(param.shape)
+    print(param.data)
+    print()
+
+#run(agent, game, steps, mode, int_action)
+
+
+# AC 64436
+# rand 43575
+# RCPO 28656
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -31,6 +31,7 @@ from utils import *
 from networks import *
 from learners_lexicographic import *
 from learners_other import *
+from envs import *
 
 ##################################################
 
@@ -50,7 +51,7 @@ device = torch.device("cpu")
 
 ##################################################
 
-def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN', continuous=False, alt_lex=False):
+def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN', continuous=False):
 
     prioritise_performance_over_safety = False
 
@@ -179,7 +180,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
             mode = 3
             
     elif agent_name=='seqLA2C2nd':
-        agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
+        agent = ActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
         if prioritise_performance_over_safety:
             mode = 5
@@ -210,14 +211,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
 ##################################################
 
-def run_episodic(agent, game, episodes, max_ep_length, mode, save_location, int_action=False, i=0):
-
-    if game == 'BalanceBotEnv':
-        env = BalanceBotEnv()
-    # elif game == 'PuckEnv':
-    #     env = PuckEnv()
-    else:
-        env = gym.make(game + '-v0')
+def run_episodic(agent, env, episodes, max_ep_length, mode, save_location, int_action=False, i=0):
 
     filename = './{}/{}/{}/{}-{}-{}.txt'.format(save_location, game, agent_name, agent_name, process_id, i)
 
@@ -239,7 +233,7 @@ def run_episodic(agent, game, episodes, max_ep_length, mode, save_location, int_
             action = agent.act(state)
             
             if type(action)!=int:
-                action = action.squeeze().cpu()
+                action = action.squeeze().cpu().float()
                 if int_action:
                     action = int(action)
                 #if torch.numel(action) == 1:
@@ -259,7 +253,7 @@ def run_episodic(agent, game, episodes, max_ep_length, mode, save_location, int_
                     cost = info['constraint_costs'][0]
                 except:
                     cost = 0
-                    print('cost exception, ', info)
+                    #print('cost exception, ', info)
                 
             if mode==1:
                 r = reward
@@ -287,14 +281,7 @@ def run_episodic(agent, game, episodes, max_ep_length, mode, save_location, int_
     agent.save_model('./{}/{}/{}/{}-{}-{}'.format(save_location, game, agent_name, agent_name, process_id, i))
 
 
-def run_interacts(agent, game, interacts, max_ep_length, mode, save_location, int_action=False, i=0):
-
-    if game == 'BalanceBotEnv':
-        env = BalanceBotEnv()
-    # elif game == 'PuckEnv':
-    #     env = PuckEnv()
-    else:
-        env = gym.make(game + '-v0')
+def run_interacts(agent, env, interacts, max_ep_length, mode, save_location, int_action=False, i=0):
 
     if game == 'MountainCar':
         int_action = True
@@ -313,9 +300,9 @@ def run_interacts(agent, game, interacts, max_ep_length, mode, save_location, in
         step += 1
 
         if type(action)!=int:
-            action = action.squeeze().cpu()
+            action = action.squeeze().cpu().float()
             if int_action:
-                    action = int(action)
+                action = int(action)
             #if torch.numel(action) == 1:
             #    action = int(action.cpu())
             #else:
@@ -336,7 +323,7 @@ def run_interacts(agent, game, interacts, max_ep_length, mode, save_location, in
                 cost = info['constraint_costs'][0]
             except:
                 cost = 0
-                print('cost exception, ', info)
+                #print('cost exception, ', info)
                 
         if mode==1:
             r = reward
@@ -380,8 +367,7 @@ save_location = 'results'
 os.makedirs('./{}/{}/{}'.format(save_location, game, agent_name), exist_ok=True)
 process_id = str(time.time())[-5:]
 
-# Use specific seed for reproducibility
-seed = 26
+seed = int(process_id)
 random.seed(seed)
 torch.manual_seed(seed)
 np.random.seed(seed)
@@ -389,6 +375,7 @@ np.random.seed(seed)
 def evaluate(i):
 
     int_action = False
+    max_ep_length = 1000
     
     if game == 'CartSafe':
         i_s = 4
@@ -396,39 +383,75 @@ def evaluate(i):
         hid = 32
         cont = False
         int_action=True
-    if game == 'GridNav':
+        
+    elif game == 'GridNav':
         i_s = 625
         a_s = 4
         hid = 2048
         cont = False
         int_action = True
-    if game == 'MountainCarContinuousSafe':
+        
+    elif game == 'MountainCarContinuousSafe':
         i_s = 2
         a_s = 2
-        hid = 16
+        hid = 32
         cont = True
-    if game == 'PuckEnv':
+        max_ep_length = 200
+        
+    elif game == 'PuckEnv':
         i_s = 18
         a_s = 2
         hid = 128
-        cont = True        
-    if game == 'BalanceBotEnv':
+        cont = True
+        
+    elif game == 'BalanceBotEnv':
         i_s = 32
         a_s = 2
         hid = 128
         cont = True
-    if game == 'MountainCar':
-        i_s = 2
-        a_s = 2
-        hid = 6
-        cont = False
-
-    max_ep_length = 1000     
         
-    agent, mode = make_agent(agent_name, in_size=i_s, action_size=a_s, hidden=hid, network='DNN', continuous=cont, alt_lex=False)    
-    run_interacts(agent, game, interacts, max_ep_length, mode, save_location, int_action, i)
+    elif game == 'MountainCar':
+        i_s = 2
+        a_s = 3
+        hid = 32
+        cont = False
+        int_action = True
+        max_ep_length = 200
 
-evaluate(1)
+    elif game == 'MountainCarSafe':
+        i_s = 2
+        a_s = 3
+        hid = 32
+        cont = False
+        int_action = True
+        max_ep_length = 200
+
+    elif game == 'Gaussian':
+        i_s = 1
+        a_s = 1
+        hid = 8
+        cont = True
+        max_ep_length = 200
+
+    else:
+        print('Invalid environment specification \"{}\"'.format(game))
+
+    if game == 'BalanceBotEnv':
+        env = BalanceBotEnv()
+    elif game == 'PuckEnv':
+        env = PuckEnv()
+    elif game == 'MountainCarSafe':
+        env = MountainCarSafe()
+    elif game == 'Gaussian':
+        env = Simple1DEnv()
+    else:
+        env = gym.make(game + '-v0')
+
+    agent, mode = make_agent(agent_name, in_size=i_s, action_size=a_s, hidden=hid, network='DNN', continuous=cont)
+    run_interacts(agent, env, interacts, max_ep_length, mode, save_location, int_action, i)
+    
+p = Pool(iterations)
+p.map(evaluate, list(range(iterations)))
 
 # p = Pool(iterations)
 # p.map(evaluate, list(range(iterations)))

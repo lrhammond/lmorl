@@ -42,6 +42,7 @@ class DNN(nn.Module):
         x = F.relu(self.line1(x))
         x = F.relu(self.line2(x))
         x = self.line3(x)
+        
         if type(self.out_size) == int:
             x = x.view(x.size(0), self.out_size)
         else:
