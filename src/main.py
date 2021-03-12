@@ -324,6 +324,10 @@ def run_interacts(agent, game, interacts, max_ep_length, mode, save_location, in
         next_state, reward, done, info = env.step(action)
         next_state = np.expand_dims(next_state, axis=0)
         next_state = torch.tensor(next_state).float().to(device)
+
+        # env.render()
+        if reward != -1:
+            print("eureka")
             
         try:
             cost = info['cost']
@@ -364,7 +368,7 @@ def run_interacts(agent, game, interacts, max_ep_length, mode, save_location, in
 
 ##################################################
 
-agent_name, game, interacts, iterations = 'AC', 'MountainCar', 5000000, 1
+agent_name, game, interacts, iterations = 'AC', 'MountainCar', 500000, 1
 
 # agent_name = sys.argv[1]
 # game = sys.argv[2]
@@ -416,11 +420,13 @@ def evaluate(i):
     if game == 'MountainCar':
         i_s = 2
         a_s = 2
-        hid = 16
-        cont = False     
+        hid = 6
+        cont = False
+
+    max_ep_length = 1000     
         
     agent, mode = make_agent(agent_name, in_size=i_s, action_size=a_s, hidden=hid, network='DNN', continuous=cont, alt_lex=False)    
-    run_interacts(agent, game, interacts, 1000, mode, save_location, int_action, i)
+    run_interacts(agent, game, interacts, max_ep_length, mode, save_location, int_action, i)
 
 evaluate(1)
 

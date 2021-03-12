@@ -46,8 +46,11 @@ class ActorCritic:
         
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
         
-        self.actor_optimizer = optim.Adam(self.actor.parameters())
-        self.critic_optimizer = optim.Adam(self.critic.parameters())
+        # self.actor_optimizer = optim.Adam(self.actor.parameters())
+        # self.critic_optimizer = optim.Adam(self.critic.parameters())
+
+        self.actor_optimizer = optim.SGD(self.actor.parameters(), lr=1e-4)
+        self.critic_optimizer = optim.SGD(self.critic.parameters(), lr=1e-3)
         
         if (torch.cuda.is_available() and not NO_CUDA) and not NO_CUDA:
             self.actor.cuda()
