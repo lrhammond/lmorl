@@ -72,9 +72,9 @@ class ActorCritic:
         
         #if done:
         if self.t % BATCH_SIZE == 0:
-            self.update_critic(self.memory.sample(sample_all=True))
-            self.update_actor(self.memory.sample(sample_all=True))
-            self.memory.memory.clear()
+            experience = self.memory.sample()
+            self.update_critic(experience)
+            self.update_actor(experience)
 
             
     def update_actor(self, experiences):
@@ -339,7 +339,7 @@ class AproPO:
             
             if self.eps % UPDATE_EVERY_EPS == 0 and len(self.memory) > BATCH_SIZE:
                 
-                experience = self.memory.sample(sample_all=True)
+                experience = self.memory.sample()
                 self.update(experience)
                 
                 
@@ -455,14 +455,11 @@ class RCPO:
         
         #if done:
         if self.t % BATCH_SIZE == 0:
-            experiences = self.memory.sample(sample_all=True)
+            experiences = self.memory.sample()
             
             self.update_critic(experiences)
             self.update_actor(experiences)
-            self.update_lagrange(experiences)
-            
-            self.memory.memory.clear()
-            
+            self.update_lagrange(experiences)            
             
     def update_actor(self, experiences):
  
@@ -577,12 +574,9 @@ class VaR_PG:
         self.memory.add(state, action, rewards, next_state, done)
         
         if self.t % BUFFER_SIZE == 0:
-            experiences = self.memory.sample(sample_all=True)
-            
+            experiences = self.memory.sample()
             self.update_actor(experiences)
             self.update_lagrange(experiences)
-            
-            self.memory.memory.clear()
             
             
     def update_actor(self, experiences):
@@ -702,13 +696,10 @@ class VaR_AC:
         self.memory.add(state, action, r, next_state, done)
         
         if done:
-            experiences = self.memory.sample(sample_all=True)
-            
+            experiences = self.memory.sample()
             self.update_critic(experiences)
             self.update_actor(experiences)
             self.update_lagrange(experiences)
-            
-            self.memory.memory.clear()
 
             
     def update_actor(self, experiences):
