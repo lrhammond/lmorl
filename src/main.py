@@ -179,7 +179,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
             mode = 3
             
     elif agent_name=='seqLA2C2nd':
-        agent = ActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
+        agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
         if prioritise_performance_over_safety:
             mode = 5
@@ -372,7 +372,8 @@ save_location = 'results'
 os.makedirs('./{}/{}/{}'.format(save_location, game, agent_name), exist_ok=True)
 process_id = str(time.time())[-5:]
 
-seed = int(process_id)
+# Use specific seed for reproducibility
+seed = 26
 random.seed(seed)
 torch.manual_seed(seed)
 np.random.seed(seed)
