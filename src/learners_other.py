@@ -15,17 +15,19 @@ from torch.distributions import Categorical
 from torch.autograd import Variable
 
 # Constants
+BUFFER_SIZE = int(1e4)
+BATCH_SIZE = 128
 UPDATE_EVERY = 4
-BUFFER_SIZE = int(1e6)
-BATCH_SIZE = 32
-EPSILON = 0.05
-LAMBDA_RL_2 = 0.05
 UPDATE_EVERY_EPS = 32
+
+EPSILON = 0.05
 SLACK = 0.04
-TOL = 1
-CONVERGENCE_LENGTH = 1000
-CONVERGENCE_DEVIATION = 0.04
-TOL2 = 1
+LAMBDA_LR_2 = 0.05
+
+#TOL = 1
+#CONVERGENCE_LENGTH = 1000
+#CONVERGENCE_DEVIATION = 0.04
+#TOL2 = 1
 
 NO_CUDA = True
 
@@ -55,11 +57,13 @@ class ActorCritic:
         
     
     def act(self, state):
+            
         if self.continuous:
             mu, var = self.actor(state)
             mu = mu.data.cpu().numpy()
             sigma = torch.sqrt(var).data.cpu().numpy() 
             action = np.random.normal(mu, sigma)
+            
             return torch.tensor(np.clip(action, -1, 1))
         else:
             return Categorical(self.actor(state)).sample()
@@ -134,8 +138,8 @@ class ActorCritic:
         torch.save(self.critic.state_dict(), '{}-critic.pt'.format(root))
 
     def load_model(self, root):
-        self.actor.load_state_dict('{}-actor.pt'.format(root))
-        self.critic.load_state_dict('{}-critic.pt'.format(root))
+        self.actor.load_state_dict(torch.load('{}-actor.pt'.format(root)))
+        self.critic.load_state_dict(torch.load('{}-critic.pt'.format(root)))
 
 ##################################################
 
@@ -143,13 +147,13 @@ class DQN:
     
     # vanilla DQN
     
-    def __init__(self, in_size, action_size, network='DNN', hidden=16):
+    def __init__(self, in_size, action_size, network='DNN', hidden=16, extra_input=False):
             
         self.t = 0                                   # total number of frames observed
         self.discount = 0.99                         # discount
         
         self.action_size=action_size
-        self.model = make_network('prediction', network, in_size, hidden, action_size)
+        self.model = make_network('prediction', network, in_size, hidden, action_size, extra_input=extra_input)
             
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
         self.optimizer = optim.Adam(self.model.parameters())
@@ -201,7 +205,7 @@ class DQN:
         torch.save(self.model.state_dict(), '{}-model.pt'.format(root))
 
     def load_model(self, root):
-        self.model.load_state_dict('{}-model.pt'.format(root))
+        self.model.load_state_dict(torch.load('{}-model.pt'.format(root)))
 
 ##################################################
 
@@ -307,15 +311,17 @@ class AproPO:
         
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
         
-        self.best_response_oracle = ActorCritic(in_size, action_size, network, hidden, 
-                                                continuous, extra_input=True)
+        #self.best_response_oracle = ActorCritic(in_size, action_size, network, hidden, 
+        #                                        continuous, extra_input=True)
+
+        self.best_response_oracle = DQN(in_size, action_size, network, hidden, extra_input=True)
         
         self.lamb = np.asarray([random.random() for _ in range(reward_size)])
         self.cumulative = self.kappa
     
     
     def act(self, state):
-        
+
         state = self.augment(state, self.cumulative)
         
         return self.best_response_oracle.act(state)
@@ -397,7 +403,7 @@ class AproPO:
         lamb_grad += ep_return
         lamb_grad /= eps #dones.sum() # counts the episodes
         
-        self.lamb = self.project(self.lamb + LAMBDA_RL_2 * lamb_grad)
+        self.lamb = self.project(self.lamb + LAMBDA_LR_2 * lamb_grad)
 
     def save_model(self, root):
         self.best_response_oracle.save_model(root)
@@ -438,6 +444,7 @@ class RCPO:
         
     
     def act(self, state):
+            
         if self.continuous:
             mu, var = self.actor(state)
             mu = mu.data.cpu().numpy()
@@ -526,8 +533,9 @@ class RCPO:
         torch.save(self.critic.state_dict(), '{}-critic.pt'.format(root))
 
     def load_model(self, root):
-        self.actor.load_state_dict('{}-actor.pt'.format(root))
-        self.critic.load_state_dict('{}-critic.pt'.format(root))
+        self.actor.load_state_dict(torch.load('{}-actor.pt'.format(root)))
+        self.critic.load_state_dict(torch.load('{}-critic.pt'.format(root)))
+
 
 ##################################################
 
@@ -561,6 +569,7 @@ class VaR_PG:
         
     
     def act(self, state):
+        
         if self.continuous:
             mu, var = self.actor(state)
             mu = mu.data.cpu().numpy()
@@ -623,7 +632,8 @@ class VaR_PG:
         torch.save(self.actor.state_dict(), '{}-actor.pt'.format(root))
 
     def load_model(self, root):
-        self.actor.load_state_dict('{}-actor.pt'.format(root))
+        self.actor.load_state_dict(torch.load('{}-actor.pt'.format(root)))
+
         
 ##################################################
 
@@ -772,5 +782,6 @@ class VaR_AC:
         torch.save(self.critic.state_dict(), '{}-critic.pt'.format(root))
 
     def load_model(self, root):
-        self.actor.load_state_dict('{}-actor.pt'.format(root))
-        self.critic.load_state_dict('{}-critic.pt'.format(root))
+        self.actor.load_state_dict(torch.load('{}-actor.pt'.format(root)))
+        self.critic.load_state_dict(torch.load('{}-critic.pt'.format(root)))
+
