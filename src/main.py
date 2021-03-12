@@ -353,12 +353,12 @@ def run_interacts(agent, env, interacts, max_ep_length, mode, save_location, int
 
 ##################################################
 
-# agent_name, game, interacts, iterations = 'AC', 'MountainCar', 500000, 1
+agent_name, game, interacts, iterations = 'seqLPPO2nd', 'CartSafe', 100000, 1
 
-agent_name = sys.argv[1]
-game = sys.argv[2]
-interacts = int(sys.argv[3])
-iterations = int(sys.argv[4])
+# agent_name = sys.argv[1]
+# game = sys.argv[2]
+# interacts = int(sys.argv[3])
+# iterations = int(sys.argv[4])
 
 save_location = 'results'
 
@@ -449,5 +449,6 @@ def evaluate(i):
     agent, mode = make_agent(agent_name, in_size=i_s, action_size=a_s, hidden=hid, network='DNN', continuous=cont)
     run_interacts(agent, env, interacts, max_ep_length, mode, save_location, int_action, i)
     
-p = Pool(iterations)
-p.map(evaluate, list(range(iterations)))
+# p = Pool(iterations)
+# p.map(evaluate, list(range(iterations)))
+evaluate(0)
