@@ -180,7 +180,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
             mode = 3
             
     elif agent_name=='seqLA2C2nd':
-        agent = ActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
+        agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
         if prioritise_performance_over_safety:
             mode = 5
@@ -313,9 +313,7 @@ def run_interacts(agent, env, interacts, max_ep_length, mode, save_location, int
         next_state = torch.tensor(next_state).float().to(device)
 
         # env.render()
-        if reward != -1:
-            print("eureka")
-            
+
         try:
             cost = info['cost']
         except:
@@ -355,19 +353,20 @@ def run_interacts(agent, env, interacts, max_ep_length, mode, save_location, int
 
 ##################################################
 
-agent_name, game, interacts, iterations = 'AC', 'MountainCar', 500000, 1
+# agent_name, game, interacts, iterations = 'AC', 'MountainCar', 500000, 1
 
-# agent_name = sys.argv[1]
-# game = sys.argv[2]
-# interacts = int(sys.argv[3])
-# iterations = int(sys.argv[4])
+agent_name = sys.argv[1]
+game = sys.argv[2]
+interacts = int(sys.argv[3])
+iterations = int(sys.argv[4])
 
 save_location = 'results'
 
 os.makedirs('./{}/{}/{}'.format(save_location, game, agent_name), exist_ok=True)
 process_id = str(time.time())[-5:]
 
-seed = int(process_id)
+# Use specific seed for reproducibility
+seed = 26
 random.seed(seed)
 torch.manual_seed(seed)
 np.random.seed(seed)
@@ -452,6 +451,3 @@ def evaluate(i):
     
 p = Pool(iterations)
 p.map(evaluate, list(range(iterations)))
-
-# p = Pool(iterations)
-# p.map(evaluate, list(range(iterations)))

@@ -16,7 +16,7 @@ from torch.autograd import Variable
 
 # Constants
 BUFFER_SIZE = int(1e4)
-BATCH_SIZE = 128
+BATCH_SIZE = 32
 UPDATE_EVERY = 4
 UPDATE_EVERY_EPS = 32
 
@@ -48,11 +48,8 @@ class ActorCritic:
         
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
         
-        # self.actor_optimizer = optim.Adam(self.actor.parameters())
-        # self.critic_optimizer = optim.Adam(self.critic.parameters())
-
-        self.actor_optimizer = optim.SGD(self.actor.parameters(), lr=1e-4)
-        self.critic_optimizer = optim.SGD(self.critic.parameters(), lr=1e-3)
+        self.actor_optimizer = optim.Adam(self.actor.parameters())
+        self.critic_optimizer = optim.Adam(self.critic.parameters())
         
         if (torch.cuda.is_available() and not NO_CUDA) and not NO_CUDA:
             self.actor.cuda()
@@ -66,7 +63,6 @@ class ActorCritic:
             mu = mu.data.cpu().numpy()
             sigma = torch.sqrt(var).data.cpu().numpy() 
             action = np.random.normal(mu, sigma)
-            
             return torch.tensor(np.clip(action, -1, 1))
         else:
             return Categorical(self.actor(state)).sample()
