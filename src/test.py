@@ -31,6 +31,7 @@ from utils import *
 from networks import *
 from learners_lexicographic import *
 from learners_other import *
+from envs import *
 
 ##################################################
 
@@ -55,53 +56,53 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
     prioritise_performance_over_safety = False
 
     if agent_name=='AC':
-        agent = ActorCritic(action_size=action_size, in_size=in_size, 
+        agent = ActorCritic(action_size=action_size, in_size=in_size,
                                 network=network, hidden=hidden, continuous=continuous)
         mode = 1
-        
+
     elif agent_name=='DQN':
-        agent = DQN(action_size=action_size, in_size=in_size, 
+        agent = DQN(action_size=action_size, in_size=in_size,
                         network=network, hidden=hidden)
         mode = 1
-        
+
     elif agent_name=='LDQN':
-        agent = LexDQN(action_size=action_size, in_size=in_size, reward_size=2, 
+        agent = LexDQN(action_size=action_size, in_size=in_size, reward_size=2,
                            network=network, hidden=hidden)
         if prioritise_performance_over_safety:
             mode = 5
         else:
             mode = 3
-            
+
     elif agent_name=='RCPO':
-        agent = RCPO(action_size=action_size, constraint=0.1, in_size=in_size, 
+        agent = RCPO(action_size=action_size, constraint=0.1, in_size=in_size,
                          network=network, hidden=hidden, continuous=continuous)
         mode = 4
-        
+
     elif agent_name=='VaR_PG':
-        agent = VaR_PG(action_size=action_size, alpha=1, beta=0.95, in_size=in_size, 
+        agent = VaR_PG(action_size=action_size, alpha=1, beta=0.95, in_size=in_size,
                            network=network, hidden=hidden, continuous=continuous)
         mode = 4
-        
+
     elif agent_name=='VaR_AC':
-        agent = VaR_AC(action_size=action_size, alpha=1, beta=0.95, in_size=in_size, 
+        agent = VaR_AC(action_size=action_size, alpha=1, beta=0.95, in_size=in_size,
                            network=network, hidden=hidden, continuous=continuous)
         mode = 4
-        
+
     elif agent_name=='AproPO':
         constraints = [(0.3, 0.5),(0.0, 0.1)]
-        agent = AproPO(action_size=action_size, 
-                       in_size=in_size, 
+        agent = AproPO(action_size=action_size,
+                       in_size=in_size,
                        constraints=constraints,
                        reward_size=2,
-                       network=network, 
+                       network=network,
                        hidden=16,
                        continuous=continuous)
         mode = 4
-     
+
     elif agent_name=='tabular':
         agent = Tabular(action_size=action_size)
         mode = 1
-        
+
     elif agent_name=='random':
         agent = RandomAgent(action_size=action_size, continuous=continuous)
         mode = 1
@@ -113,7 +114,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
             mode = 5
         else:
             mode = 3
-            
+
     elif agent_name=='seqLA2C':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=False,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
@@ -129,7 +130,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
             mode = 5
         else:
             mode = 3
-            
+
     elif agent_name=='seqLPPO':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=False,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
@@ -145,7 +146,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
             mode = 5
         else:
             mode = 3
-            
+
     elif agent_name=='seqLA2C2nd':
         agent = ActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
@@ -161,7 +162,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
             mode = 5
         else:
             mode = 3
-            
+
     elif agent_name=='seqLPPO2nd':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=True,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
@@ -169,22 +170,24 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
             mode = 5
         else:
             mode = 3
-        
+
     else:
         print('invalid agent specification')
         assert False
-        
+
     return agent, mode
 
 ##################################################
 
 
-def run(agent, game, steps, mode, int_action=False):
+def run(agent, game, mode, int_action=False):
 
     if game == 'BalanceBotEnv':
         env = BalanceBotEnv(render=True)
     elif game == 'PuckEnv':
         env = PuckEnv()
+    elif game == 'MountainCarSafe':
+        env = MountainCarSafe()
     else:
         env = gym.make(game + '-v0')
 
@@ -204,7 +207,7 @@ def run(agent, game, steps, mode, int_action=False):
                 action = int(action)
 
         #print(action)
-        if step % 100 == 0:
+        if step % 10 == 0:
             print(action)
 
         next_state, reward, done, info = env.step(action)
@@ -212,7 +215,7 @@ def run(agent, game, steps, mode, int_action=False):
         next_state = torch.tensor(next_state).float().to(device)
 
         env.render()
-            
+
         try:
             cost = info['cost']
         except:
@@ -221,7 +224,7 @@ def run(agent, game, steps, mode, int_action=False):
             except:
                 cost = 0
                 #print('cost exception, ', info)
-                
+
         if mode==1:
             r = reward
         elif mode==2:
@@ -244,14 +247,13 @@ def run(agent, game, steps, mode, int_action=False):
             state = next_state
 
     env.close()
-    
+
 ##################################################
 
 
-agent_name = 'AC'
-game = 'BalanceBotEnv'
+agent_name = 'LDQN'
+game = 'CartSafe'
 interacts = 10000
-steps = 1000
 int_action=False
 
 if game == 'CartSafe':
@@ -287,55 +289,38 @@ if game == 'MountainCar':
     hid = 32
     cont = False
     int_action=True
-        
+if game == 'MountainCarSafe':
+    i_s = 2
+    a_s = 3
+    hid = 32
+    cont = False
+    int_action=True
+
 agent, mode = make_agent(agent_name, in_size=i_s, action_size=a_s, hidden=hid, network='DNN', continuous=cont, alt_lex=False)
 
-agent.load_model('../results/{}/{}/{}-47868-2'.format(game, agent_name, agent_name))
+agent.load_model('../results/{}/{}/{}-48403-3'.format(game, agent_name, agent_name))
 
-for param in agent.critic.parameters():
-    print(param.shape)
-    print(param.data)
-    print()
+##for param in agent.critic.parameters():
+##    print(param.shape)
+##    #print(param.data)
+##    print(True in torch.isnan(param.data))
+##
+##print()
+##print('#################')
+##print()
+##
+##for param in agent.actor.parameters():
+##    print(param.shape)
+##    #print(param.data)
+##    print(True in torch.isnan(param.data))
+##
+##print()
+##print('#################')
+##print()
 
-print('adfasdfasdf')
-    
-for param in agent.actor.parameters():
-    print(param.shape)
-    print(param.data)
-    print()
-
-#run(agent, game, steps, mode, int_action)
+run(agent, game, mode, int_action)
 
 
 # AC 64436
 # rand 43575
 # RCPO 28656
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
