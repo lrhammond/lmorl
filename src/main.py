@@ -390,13 +390,16 @@ game = sys.argv[2]
 interacts = int(sys.argv[3])
 #iterations = int(sys.argv[4])
 
+# Testing
+agent_name, game, interacts = 'LPPO2nd', 'CartSafe', 10000
+
 save_location = 'results'
 
 os.makedirs('./{}/{}/{}'.format(save_location, game, agent_name), exist_ok=True)
 process_id = str(time.time())[-5:]
 
 # Use specific seed for reproducibility
-seed = process_id
+seed = int(process_id)
 random.seed(seed)
 torch.manual_seed(seed)
 np.random.seed(seed)

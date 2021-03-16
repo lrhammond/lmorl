@@ -311,7 +311,7 @@ class LexActorCritic:
             dists = self.actor(states.to(device))
             log_probs = torch.log(torch.gather(dists, 1, actions))
 
-        return log_probs
+        return torch.sum(log_probs,dim=1)
 
 
     def compute_loss(self, experiences, reward_range):
