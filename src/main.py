@@ -352,6 +352,8 @@ def run_episodic(agent, env, episodes, max_ep_length, mode, save_location, int_a
 
 ##################################################
 
+# agent_name, game, interacts = 'LPPO', 'CartSafe', 10000
+
 agent_name = sys.argv[1]
 game = sys.argv[2]
 interacts = int(sys.argv[3])

@@ -2,7 +2,7 @@
 
 from networks import *
 
-import math, random, pickle
+import math, random, pickle, copy, time
 
 import torch
 import torch.nn as nn
@@ -394,6 +394,21 @@ class LexActorCritic:
                 loss = -(ratios * first_order_weighted_advantages - self.kl_weight * kl_penalty).mean().to(device)
                 for i in range(self.reward_size):
                     self.recent_losses[i].append((ratios * advantage[:,i] - relative_kl_weights[i] * kl_penalty).mean())
+                
+                # n = torch.tensor(float('nan'))
+                # m = torch.tensor(float('inf'))
+                # o = torch.tensor(float('-inf'))
+
+                # Check for nans and infs
+                if torch.isnan(loss) or torch.isinf(loss):
+                    current_time = str(time.time())
+                    torch.save(self.actor.state_dict(), 'actor_nan_error_{}.pt'.format(current_time))
+                    torch.save(self.critic.state_dict(), 'critic_nan_error_{}.pt'.format(current_time))
+                    current_data = {'loss':loss, 'experiences':experiences, 'ratios':ratios, 'first_order_weights':first_order_weights, 'advantage':advantage, 'kl_weight':self.kl_weight, 'kl_penalty':kl_penalty}
+                    with open('nan_error_data_{}.pickle'.format(current_time), 'wb') as handle:
+                        pickle.dump(current_data, handle)
+                    return "oops"
+
             # Update KL weight term as in the original PPO paper
             if kl_penalty.mean() < self.kl_target / 1.5:
                 self.kl_weight *= 0.5
