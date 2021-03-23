@@ -95,13 +95,24 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
                        constraints=constraints,
                        reward_size=2,
                        network=network,
-                       hidden=16,
+                       hidden=hidden,
                        continuous=continuous)
         mode = 4
 
     elif agent_name=='tabular':
         agent = Tabular(action_size=action_size)
         mode = 1
+
+    elif agent_name=='LexTabular':
+        agent = LexTabular(action_size=action_size)
+        if prioritise_performance_over_safety:
+            mode = 5
+        else:
+            mode = 3
+
+    elif agent_name=='invLexTabular':
+        agent = LexTabular(action_size=action_size)
+        mode = 5
 
     elif agent_name=='random':
         agent = RandomAgent(action_size=action_size, continuous=continuous)
@@ -183,7 +194,10 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 def run(agent, game, mode, int_action=False):
 
     if game == 'BalanceBotEnv':
-        env = BalanceBotEnv(render=True)
+        if render:
+            env = BalanceBot(render=True)
+        else:
+            env = BalanceBot(render=False)
     elif game == 'PuckEnv':
         env = PuckEnv()
     elif game == 'MountainCarSafe':
@@ -195,26 +209,41 @@ def run(agent, game, mode, int_action=False):
     state = np.expand_dims(state, axis=0)
     state = torch.tensor(state).float().to(device)
 
-    env.render()
+    if render:
+        env.render()
+    i = 0
+
+    cumulative_cost = 0
+    cumulative_reward = 0
+
+    cumulative_costs = []
+    cumulative_rewards = []
 
     for step in range(interacts):
 
         action = agent.act(state)
+        i += 1
 
+        #action = int(action)
         if type(action)!=int:
             action = action.squeeze().cpu()
             if int_action:
                 action = int(action)
 
         #print(action)
-        if step % 10 == 0:
-            print(action)
+##        if step % 10 == 0:
+##            print()
+##            print(action)
+##            for _ in range(5):
+##                print(float(agent.act(state)))
+##            print()
 
         next_state, reward, done, info = env.step(action)
         next_state = np.expand_dims(next_state, axis=0)
         next_state = torch.tensor(next_state).float().to(device)
 
-        env.render()
+        if render:
+            env.render()
 
         try:
             cost = info['cost']
@@ -223,49 +252,188 @@ def run(agent, game, mode, int_action=False):
                 cost = info['constraint_costs'][0]
             except:
                 cost = 0
-                #print('cost exception, ', info)
+                
+        cumulative_cost += cost
+        cumulative_reward += reward
 
-        if mode==1:
-            r = reward
-        elif mode==2:
-            r = reward-cost
-        elif mode==3:
-            r = [-cost, reward]
-        elif mode==4:
-            r = [reward, cost]
-        elif mode==5:
-            r = [reward, -cost]
+        if done or i >= max_step:
 
-        #agent.step(state, action, r, next_state, done)
+            #print(state)
+            #print(next_state)
+            #print()
 
-        if done:
-            step = 0
+            print(i)
+
+            #print('cumulative reward: {}'.format(cumulative_reward))
+            #print('cumulative cost: {}'.format(cumulative_cost))
+
+            cumulative_costs.append(cumulative_cost)
+            cumulative_rewards.append(cumulative_reward)
+
+            if len(cumulative_costs) % 10 == 0:
+                print(len(cumulative_costs))
+
+            cumulative_cost = 0
+            cumulative_reward = 0
+
+            i = 0
             state = env.reset()
             state = np.expand_dims(state, axis=0)
             state = torch.tensor(state).float().to(device)
         else:
             state = next_state
 
+    print()
+    print('episodes: {}'.format(len(cumulative_rewards)))
+    print('mean reward: {}'.format(sum(cumulative_rewards)/len(cumulative_rewards)))
+    print('mean cost: {}'.format(sum(cumulative_costs)/len(cumulative_costs)))
+
     env.close()
 
 ##################################################
 
+agent_name = 'LPPO'
+game = 'BalanceBotEnv'
+version = 0
 
-agent_name = 'LDQN'
-game = 'CartSafe'
-interacts = 10000
+render = True
+
+interacts = 100000
+max_step = 300
 int_action=False
+
+'CartSafe:'
+
+'''
+LA2C
+
+episodes: 335
+mean reward: 66.05724363935079
+mean cost: 16.567164179104477
+
+episodes: 333
+mean reward: 58.30409285732141
+mean cost: 1.0690690690690692
+
+episodes: 333
+mean reward: 92.9420071928909
+mean cost: 3.960960960960961
+
+episodes: 335
+mean reward: 162.85607315291267
+mean cost: 19.507462686567163
+
+episodes: 333
+mean reward: 95.94924971441544
+mean cost: 14.327327327327327
+
+episodes: 333
+mean reward: 87.02220382689487
+mean cost: 4.333333333333333
+
+episodes: 333
+mean reward: 100.42209297644564
+mean cost: 4.054054054054054
+
+episodes: 340
+mean reward: 56.39526542248087
+mean cost: 46.30882352941177
+
+episodes: 333
+mean reward: 16.861143846970414
+mean cost: 0.5525525525525525
+
+episodes: 592
+mean reward: 35.33088809537506
+mean cost: 59.876689189189186
+'''
+
+
+'''
+LPPO
+
+episodes: 335
+mean reward: 74.61730871869484
+mean cost: 37.602985074626865
+
+episodes: 333
+mean reward: 49.750443329450846
+mean cost: 1.0990990990990992
+
+episodes: 333
+mean reward: 75.15519426946759
+mean cost: 1.3963963963963963
+
+episodes: 333
+mean reward: 83.57504857039663
+mean cost: 3.4504504504504503
+
+episodes: 333
+mean reward: 72.01744290698342
+mean cost: 4.666666666666667
+
+episodes: 333
+mean reward: 95.90507410980115
+mean cost: 2.6876876876876876
+
+episodes: 333
+mean reward: 51.65555492487361
+mean cost: 2.018018018018018
+
+episodes: 339
+mean reward: 109.95227535271151
+mean cost: 44.05309734513274
+
+episodes: 333
+mean reward: 51.23009639529476
+mean cost: 0.3843843843843844
+
+episodes: 333
+mean reward: 52.8936635367478
+mean cost: 2.285285285285285
+'''
+
+
+
+'???:'
+
+'''
+0
+episodes: 1045
+mean reward: 57.63714434476072
+mean cost: 63.311004784689
+
+1
+episodes: 1501
+mean reward: 99.61017488580045
+mean cost: 30.59493670886076
+
+2
+episodes: 1002
+mean reward: 109.71392396219872
+mean cost: 7.164670658682635
+
+3
+episodes: 1000
+mean reward: 44.41469999692886
+mean cost: 0.0
+
+4
+episodes: 1000
+mean reward: 2.6676060450390096
+mean cost: 0.0
+'''
 
 if game == 'CartSafe':
     i_s = 4
     a_s = 2
-    hid = 32
+    hid = 8
     cont = False
     int_action=True
 if game == 'GridNav':
     i_s = 625
     a_s = 4
-    hid = 2048
+    hid = 128
     cont = False
     int_action = True
 if game == 'MountainCarContinuousSafe':
@@ -281,7 +449,7 @@ if game == 'PuckEnv':
 if game == 'BalanceBotEnv':
     i_s = 32
     a_s = 2
-    hid = 128
+    hid = 32
     cont = True
 if game == 'MountainCar':
     i_s = 2
@@ -296,9 +464,48 @@ if game == 'MountainCarSafe':
     cont = False
     int_action=True
 
-agent, mode = make_agent(agent_name, in_size=i_s, action_size=a_s, hidden=hid, network='DNN', continuous=cont, alt_lex=False)
+agent, mode = make_agent(agent_name, i_s, a_s, hid, 'DNN', cont, alt_lex=False)
 
-agent.load_model('../results/{}/{}/{}-48403-3'.format(game, agent_name, agent_name))
+i = 0
+has_loaded = False
+for _,_, files in os.walk('../results/{}/{}/'.format(game, agent_name)):
+    for file in filter(lambda file: '.txt' in file, files):
+        if i == version:
+            print('../results/{}/{}/{}'.format(game, agent_name,file[:-4]))
+            agent.load_model('../results/{}/{}/{}-3000000'.format(game, agent_name,file[:-4]))
+            has_loaded=True
+            break
+        i += 1
+if not has_loaded:
+    print('using random initialisation!')
+
+import matplotlib.pyplot as plt
+##
+##x = []
+##y = []
+##colours = []
+##
+##for pos in np.arange(-1.2, 0.6, 0.03):
+##    for vel in np.arange(-0.07, 0.07, 0.003):
+##        
+##        x.append(pos)
+##        y.append(vel)
+##
+##        s = np.asarray([pos, vel])
+##        s = np.expand_dims(s, axis=0)
+##        s = torch.tensor(s).float().to(device)
+##        
+##        lst = [agent.act(s) for _ in range(10)]
+##        action = max(set(lst), key=lst.count)
+##        if action == 0:
+##            colours.append('r')
+##        if action == 1:
+##            colours.append('y')
+##        if action == 2:
+##            colours.append('g')
+##
+##plt.scatter(x,y,c=colours)
+##plt.show()
 
 ##for param in agent.critic.parameters():
 ##    print(param.shape)

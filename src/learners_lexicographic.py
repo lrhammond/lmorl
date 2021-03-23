@@ -2,8 +2,7 @@
 
 from networks import *
 
-import math
-import random
+import math, random, pickle
 
 import torch
 import torch.nn as nn
@@ -133,6 +132,7 @@ class LexDQN:
 
 class LexActorCritic:
     
+    
     def __init__(self, in_size, action_size, mode, reward_size=2, second_order=False, sequential=False, network='DNN', hidden=16, continuous=False, extra_input=False):
 
         if mode != 'a2c' and mode != 'ppo':
@@ -158,8 +158,11 @@ class LexActorCritic:
 
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
         
-        self.actor_optimizer = optim.Adam(self.actor.parameters())
-        self.critic_optimizer = optim.Adam(self.critic.parameters())
+        #self.actor_optimizer = optim.Adam(self.actor.parameters())
+        #self.critic_optimizer = optim.Adam(self.critic.parameters())
+
+        self.actor_optimizer = optim.Adam(self.actor.parameters(),1e-5)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(),lr=1e-3)
 
         # If using Adam then only the eta LR and the (relative) beta LRs matter
         self.beta = list(reversed(range(1, reward_size + 1)))
@@ -407,3 +410,176 @@ class LexActorCritic:
         self.actor.load_state_dict(torch.load('{}-actor.pt'.format(root)))
         self.critic.load_state_dict(torch.load('{}-critic.pt'.format(root)))
 
+##################################################
+
+class LexTabular:
+    
+    def __init__(self, action_size, reward_size=2, on_policy=False, initialisation=10, double=False):
+        
+        self.actions = list(range(action_size))
+        if not double:
+            self.Q = [{} for _ in range(reward_size)]
+        else:
+            self.Qa = [{} for _ in range(reward_size)]
+            self.Qb = [{} for _ in range(reward_size)]
+
+        self.discount = 0.99
+        
+        if isinstance(initialisation, float) or isinstance(initialisation, int):
+            self.initialisation = [initialisation for _ in range(reward_size)]
+        else:
+            self.initialisation = initialisation
+
+        self.double = double
+        if double:
+            self.step = self.double_Q_update
+        elif on_policy:
+            self.step = self.SARSA_update
+        else:
+            self.step = self.Q_update 
+        
+    
+    def act(self, state):
+        
+        state = str(state)
+        self.init_state(state)
+        return self.lexicographic_epsilon_greedy(state)
+    
+
+    def init_state(self, state):
+        
+        if not self.double:
+            if not state in self.Q[0].keys(): 
+                for i, Qi in enumerate(self.Q):
+                    Qi[state] = {a:self.initialisation[i] for a in self.actions} # initialisation
+        else:
+            if not state in self.Qa[0].keys():
+                for i, Qai in enumerate(self.Qa):
+                    Qai[state] = {a:self.initialisation[i] for a in self.actions} # initialisation
+                for i, Qbi in enumerate(self.Qb):
+                    Qbi[state] = {a:self.initialisation[i] for a in self.actions} # self.initialisation
+
+    
+    def lexicographic_epsilon_greedy(self, state):
+
+        state = str(state)
+        
+        if np.random.choice([True,False], p=[EPSILON, 1-EPSILON]):
+            return np.random.choice(self.actions)
+        
+        permissible_actions = self.actions
+    
+        if not self.double:
+            for Qi in self.Q:
+                m = max([Qi[state][a] for a in permissible_actions])
+                r = SLACK
+                permissible_actions = [a for a in permissible_actions if Qi[state][a] >= m-r*abs(m)]
+        else:
+            for Qai, Qbi in zip(self.Qa, self.Qb):
+                m = max([0.5*(Qai[state][a]+Qbi[state][a]) for a in permissible_actions])
+                r = SLACK
+                permissible_actions = [a for a in permissible_actions if 0.5*(Qai[state][a]+Qbi[state][a] >= m-r*abs(m))] 
+
+        return np.random.choice(permissible_actions)
+        
+    
+    def Q_update(self, state, action, reward, next_state, done):
+
+        state = str(state)
+        next_state = str(next_state)
+        self.init_state(state)
+        self.init_state(next_state)
+        permissible_actions = self.actions
+        
+        for i, Qi in enumerate(self.Q):
+            
+            m = max([Qi[next_state][a] for a in permissible_actions])
+            r = SLACK
+            permissible_actions = [a for a in permissible_actions if Qi[next_state][a] >= m-r*abs(m)]
+            
+            alpha = 0.01
+            Qi[state][action] = (1-alpha)*Qi[state][action] + alpha*(reward[i] + self.discount*m)
+            
+            
+
+    def SARSA_update(self, state, action, reward, next_state, done):
+
+        state = str(state)
+        next_state = str(next_state)
+        permissible_actions = self.actions
+        
+        for Qi in self.Q:
+            m = max([Qi[next_state][a] for a in permissible_actions])
+            r = SLACK
+            permissible_actions = [a for a in permissible_actions if Qi[next_state][a] >= m-r*abs(m)]
+            
+        ps = []  
+        
+        for Qi in self.Q:
+            for a in self.actions:
+                if a in permissible_actions:
+                    ps.append((1-EPSILON)/len(permissible_actions) + EPSILON/len(self.actions))
+                else:
+                    ps.append(EPSILON/len(self.actions))
+        
+        for i, Qi in enumerate(self.Q):
+            exp = sum([p*Qi[next_state][a] for p,a in zip(ps, self.actions)])
+            target = reward[i] + self.discount*exp
+            alpha = 0.01
+            Qi[state][action] = (1-alpha)*Qi[state][action] + alpha*target
+            
+            
+    def double_Q_update(self, state, action, reward, next_state, done):
+
+        state = str(state)
+        next_state = str(next_state)
+        permissible_actions = self.actions
+        r = SLACK
+            
+        for i, (Qai, Qbi) in enumerate(zip(self.Qa, self.Qb)):
+            
+            if np.random.choice([True,False]):
+
+                m = max([Qbi[next_state][a] for a in permissible_actions])
+                permissible_actions = [a for a in permissible_actions if Qbi[next_state][a]  >= m-r*abs(m)]
+                
+                a = np.random.choice(permissible_actions)
+                m = Qai[next_state][a]
+                target = 0 if done else reward[i] + self.discount*m
+
+                alpha = 0.01
+                Qai[state][action] = (1-alpha)*Qai[state][action] + alpha*target
+                
+            else:
+                
+                m = max([Qai[next_state][a] for a in permissible_actions])
+                permissible_actions = [i for i in permissible_actions if Qai[next_state][i] >= m-r*abs(m)]
+                
+                a = np.random.choice(permissible_actions)
+                m = Qbi[next_state][a]
+                target = 0 if done else reward[i] + self.discount*m
+
+                alpha = 0.01
+                Qbi[state][action] = (1-alpha)*Qbi[state][action] + alpha*target          
+
+
+    def save_model(self, root):
+        if not self.double:
+            with open('{}-model.pt'.format(root), 'wb') as f:
+                pickle.dump(self.Q, f, pickle.HIGHEST_PROTOCOL)
+        else:
+            with open('{}-model-A.pt'.format(root), 'wb') as f:
+                pickle.dump(self.Qa, f, pickle.HIGHEST_PROTOCOL)
+            with open('{}-model-B.pt'.format(root), 'wb') as f:
+                pickle.dump(self.Qb, f, pickle.HIGHEST_PROTOCOL)
+
+
+    def load_model(self, root):
+        if not self.double:
+            with open('{}-model.pt'.format(root), 'rb') as f:
+                self.Q = pickle.load(f)
+        else:
+            with open('{}-model-A.pt'.format(root), 'rb') as f:
+                self.Qa = pickle.load(f)
+            with open('{}-model-B.pt'.format(root), 'rb') as f:
+                self.Qb = pickle.load(f)

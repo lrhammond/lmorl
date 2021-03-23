@@ -32,15 +32,20 @@ class DNN(nn.Module):
         if not type(out_size) == int:
             out_size = np.prod(out_size)
 
+        #self.line = nn.Linear(in_size, out_size, bias=True)
+
         self.line1 = nn.Linear(in_size, hidden, bias=True)
-        self.line2 = nn.Linear(hidden, hidden, bias=True)
+        #self.line2 = nn.Linear(hidden, hidden, bias=True)
         self.line3 = nn.Linear(hidden, out_size, bias=True)
 
     def forward(self,x):
 
         x = x.view(x.size(0), -1).float()
+
+        #x = self.line(x)
+        
         x = F.relu(self.line1(x))
-        x = F.relu(self.line2(x))
+        #x = F.relu(self.line2(x))
         x = self.line3(x)
 
         if type(self.out_size) == int:
@@ -56,16 +61,21 @@ class PolicyDNN(nn.Module):
 
         super(PolicyDNN, self).__init__()
 
+        #self.line = nn.Linear(in_size, action_size, bias=True)
+        
         self.line1 = nn.Linear(in_size, hidden, bias=True)
-        self.line2 = nn.Linear(hidden, hidden, bias=True)
+        #self.line2 = nn.Linear(hidden, hidden, bias=True)
         self.line3 = nn.Linear(hidden, action_size, bias=True)
 
     def forward(self,x):
 
         x = x.view(x.size(0), -1)
+
+        #x = self.line(x)
         x = F.relu(self.line1(x))
-        x = F.relu(self.line2(x))
+        #x = F.relu(self.line2(x))
         x = self.line3(x)
+
         x = F.softmax(x, dim=-1)
         #x = Categorical(F.softmax(x, dim=-1))
 
@@ -209,7 +219,7 @@ class ContinuousPolicyDNN(nn.Module):
         super(ContinuousPolicyDNN, self).__init__()
 
         self.line1 = nn.Linear(in_size, hidden, bias=True)
-        self.line2 = nn.Linear(hidden, hidden, bias=True)
+        #self.line2 = nn.Linear(hidden, hidden, bias=True)
         self.mu = nn.Linear(hidden, action_size, bias=True)
         self.var = nn.Linear(hidden, action_size, bias=True)
 
@@ -217,7 +227,7 @@ class ContinuousPolicyDNN(nn.Module):
 
         x = x.view(x.size(0), -1)
         x = F.relu(self.line1(x))
-        x = F.relu(self.line2(x))
+        #x = F.relu(self.line2(x))
         mu = torch.tanh(self.mu(x))
         var = F.softplus(self.var(x)) + 1e-5
 

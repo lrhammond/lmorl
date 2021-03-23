@@ -4,7 +4,7 @@ import numpy as np
 
 from networks import *
 
-import math, random
+import math, random, pickle
 
 import torch
 import torch.nn as nn
@@ -23,11 +23,6 @@ UPDATE_EVERY_EPS = 32
 EPSILON = 0.05
 SLACK = 0.04
 LAMBDA_LR_2 = 0.05
-
-#TOL = 1
-#CONVERGENCE_LENGTH = 1000
-#CONVERGENCE_DEVIATION = 0.04
-#TOL2 = 1
 
 NO_CUDA = True
 
@@ -48,10 +43,13 @@ class ActorCritic:
 
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters())
-        self.critic_optimizer = optim.Adam(self.critic.parameters())
+        #self.actor_optimizer = optim.Adam(self.actor.parameters())
+        #self.critic_optimizer = optim.Adam(self.critic.parameters())
 
-        if (torch.cuda.is_available() and not NO_CUDA) and not NO_CUDA:
+        self.actor_optimizer = optim.Adam(self.actor.parameters(),1e-5)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(),lr=1e-3)
+
+        if (torch.cuda.is_available() and not NO_CUDA):
             self.actor.cuda()
             self.critic.cuda()
 
@@ -73,7 +71,6 @@ class ActorCritic:
         self.t += 1
         self.memory.add(state, action, reward, next_state, done)
 
-        #if done:
         if self.t % BATCH_SIZE == 0:
             self.update_critic(self.memory.sample(sample_all=True))
             self.update_actor(self.memory.sample(sample_all=True))
@@ -93,7 +90,7 @@ class ActorCritic:
 
         if self.continuous:
             means, variances = self.actor(states.to(device))
-            p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-3))
+            p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-5))
             p2 = - torch.log(torch.sqrt(2 * math.pi * variances))
             log_probs = p1 + p2
         else:
@@ -247,12 +244,20 @@ class Tabular:
 
         target = reward + self.discount * max([self.Q[next_state][a] for a in self.actions]) * (1-done)
 
-        alpha = 0.05
+        alpha = 0.01
         self.Q[state][action] = (1 - alpha) * self.Q[state][action] + alpha * target
 
     def init_state(self, state):
         if not state in self.Q.keys():
             self.Q[state] = {a:self.initialisation for a in self.actions}
+
+    def save_model(self, root):
+        with open('{}-model.pt'.format(root), 'wb') as f:
+            pickle.dump(self.Q, f, pickle.HIGHEST_PROTOCOL)
+
+    def load_model(self, root):
+        with open('{}-model.pt'.format(root), 'rb') as f:
+            self.Q = pickle.load(f)
 
 ##################################################
 
@@ -310,10 +315,10 @@ class AproPO:
 
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
 
-        #self.best_response_oracle = ActorCritic(in_size, action_size, network, hidden,
-        #                                        continuous, extra_input=True)
+        self.best_response_oracle = ActorCritic(in_size, action_size, network, hidden,
+                                                continuous, extra_input=True)
 
-        self.best_response_oracle = DQN(in_size, action_size, network, hidden, extra_input=True)
+        #self.best_response_oracle = DQN(in_size, action_size, network, hidden, extra_input=True)
 
         self.lamb = np.asarray([random.random() for _ in range(reward_size)])
         self.cumulative = self.kappa
@@ -434,8 +439,12 @@ class RCPO:
 
         self.LAMBDA_LR = 0.0001
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=0.001)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=0.001)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(),1e-5)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(),lr=1e-3)
+
+        #self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=0.001)
+        #self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=0.001)
+        
 
         if (torch.cuda.is_available() and not NO_CUDA):
             self.actor.cuda()
@@ -484,7 +493,7 @@ class RCPO:
 
         if self.continuous:
             means, variances = self.actor(states.to(device))
-            p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-3))
+            p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-5))
             p2 = - torch.log(torch.sqrt(2 * math.pi * variances))
             log_probs = p1 + p2
         else:
@@ -604,7 +613,7 @@ class VaR_PG:
 
         if self.continuous:
             means, variances = self.actor(states.to(device))
-            p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-3))
+            p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-5))
             p2 = - torch.log(torch.sqrt(2 * math.pi * variances))
             log_probs = p1 + p2
         else:
@@ -663,8 +672,11 @@ class VaR_AC:
 
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters())
-        self.critic_optimizer = optim.Adam(self.critic.parameters())
+        #self.actor_optimizer = optim.Adam(self.actor.parameters())
+        #self.critic_optimizer = optim.Adam(self.critic.parameters())
+
+        self.actor_optimizer = optim.Adam(self.actor.parameters(),1e-5)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(),lr=1e-3)
 
         if (torch.cuda.is_available() and not NO_CUDA):
             self.actor.cuda()
@@ -733,7 +745,7 @@ class VaR_AC:
 
         if self.continuous:
             means, variances = self.actor(states.to(device))
-            p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-3))
+            p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-5))
             p2 = - torch.log(torch.sqrt(2 * math.pi * variances))
             log_probs = p1 + p2
         else:
