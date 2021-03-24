@@ -479,6 +479,12 @@ for _,_, files in os.walk('../results/{}/{}/'.format(game, agent_name)):
 if not has_loaded:
     print('using random initialisation!')
 
+# t = '1616587665.7254992'
+# agent.actor.load_state_dict(torch.load('/Users/lewishammond/Repositories/code/lmorl/actor_nan_error_{}.pt'.format(t)))
+# agent.critic.load_state_dict(torch.load('/Users/lewishammond/Repositories/code/lmorl/critic_nan_error_{}.pt'.format(t)))
+# with open('nan_error_data_{}.pickle'.format(t), "rb") as input_file:
+#     p = pickle.load(input_file) 
+
 import matplotlib.pyplot as plt
 ##
 ##x = []

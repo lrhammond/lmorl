@@ -371,10 +371,8 @@ class LexActorCritic:
                 outcome  = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
                 advantage = (outcome - baseline).detach()
                 old_log_probs = self.get_log_probs(states, actions).to(device)
-                old_probs = torch.exp(old_log_probs).to(device)
             new_log_probs = self.get_log_probs(states, actions).to(device)
-            new_probs = torch.exp(new_log_probs).to(device)
-            ratios = (new_probs / old_probs).to(device)
+            ratios = torch.exp(new_log_probs - old_log_probs).to(device)
             first_order_weighted_advantages = torch.sum(first_order_weights * advantage[:,0:reward_range], dim=1).to(device)
             kl_penalty = (new_log_probs - old_log_probs).to(device)
             relative_kl_weights = [self.kl_weight * first_order_weights[i] / sum(first_order_weights) for i in range(reward_range)]
