@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from networks import *
+from src.networks import *
 
 import math, random, pickle
 
@@ -220,7 +220,6 @@ class Tabular:
         self.t = 0
 
     def act(self, state):
-
         self.t += 1
 
         state = str(state)
@@ -236,7 +235,6 @@ class Tabular:
         return action
 
     def step(self, state, action, reward, next_state, done):
-
         state = str(state)
         next_state = str(next_state)
         self.init_state(state)
@@ -252,6 +250,12 @@ class Tabular:
             self.Q[state] = {a:self.initialisation for a in self.actions}
 
     def save_model(self, root):
+        if False: # Option for debugging
+            for k, i in self.Q.items():
+                print()
+                print(k)
+                print(i)
+
         with open('{}-model.pt'.format(root), 'wb') as f:
             pickle.dump(self.Q, f, pickle.HIGHEST_PROTOCOL)
 

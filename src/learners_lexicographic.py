@@ -1,6 +1,6 @@
 # Our (lexicographic) learning algorithms
 
-from networks import *
+from src.networks import *
 
 import math, random, pickle, copy, time
 

@@ -134,3 +134,4 @@ dmypy.json
 results/
 logs/
 src/safety-gym/
+/lexico/
