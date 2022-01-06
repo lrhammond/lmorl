@@ -1,4 +1,5 @@
 # Main file for running experiments
+import datetime
 
 import numpy as np
 
@@ -8,9 +9,10 @@ import time
 from itertools import count
 import os, sys, math
 from multiprocessing import Pool
+import argparse
 
 import gym
-#import safety_gym
+# import safety_gym
 import gym_safety
 import open_safety
 
@@ -49,47 +51,47 @@ from envs import *
 
 device = torch.device("cpu")
 
+
 ##################################################
 
 def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN', continuous=False):
-
     prioritise_performance_over_safety = False
 
-    if agent_name=='AC':
+    if agent_name == 'AC':
         agent = ActorCritic(action_size=action_size, in_size=in_size,
-                                network=network, hidden=hidden, continuous=continuous)
+                            network=network, hidden=hidden, continuous=continuous)
         mode = 1
 
-    elif agent_name=='DQN':
+    elif agent_name == 'DQN':
         agent = DQN(action_size=action_size, in_size=in_size,
-                        network=network, hidden=hidden)
+                    network=network, hidden=hidden)
         mode = 1
 
-    elif agent_name=='LDQN':
+    elif agent_name == 'LDQN':
         agent = LexDQN(action_size=action_size, in_size=in_size, reward_size=2,
-                           network=network, hidden=hidden)
+                       network=network, hidden=hidden)
         if prioritise_performance_over_safety:
             mode = 5
         else:
             mode = 3
 
-    elif agent_name=='RCPO':
+    elif agent_name == 'RCPO':
         agent = RCPO(action_size=action_size, constraint=5.0, in_size=in_size,
-                         network=network, hidden=hidden, continuous=continuous)
+                     network=network, hidden=hidden, continuous=continuous)
         mode = 4
 
-    elif agent_name=='VaR_PG':
+    elif agent_name == 'VaR_PG':
         agent = VaR_PG(action_size=action_size, alpha=5, beta=0.95, in_size=in_size,
-                           network=network, hidden=hidden, continuous=continuous)
+                       network=network, hidden=hidden, continuous=continuous)
         mode = 4
 
-    elif agent_name=='VaR_AC':
+    elif agent_name == 'VaR_AC':
         agent = VaR_AC(action_size=action_size, alpha=5, beta=0.95, in_size=in_size,
-                           network=network, hidden=hidden, continuous=continuous)
+                       network=network, hidden=hidden, continuous=continuous)
         mode = 4
 
-    elif agent_name=='AproPO':
-        constraints = [(90.0, 100.0),(0.0, 5.0)]
+    elif agent_name == 'AproPO':
+        constraints = [(90.0, 100.0), (0.0, 5.0)]
         agent = AproPO(action_size=action_size,
                        in_size=in_size,
                        constraints=constraints,
@@ -99,58 +101,58 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
                        continuous=continuous)
         mode = 4
 
-##    elif agent_name=='LAC':
-##        agent = LexActorCritic(in_size=in_size, action_size=action_size,
-##                               reward_size=2, network='DNN', hidden=hidden, sequential=False)
-##        if prioritise_performance_over_safety:
-##            mode = 5
-##        else:
-##            mode = 3
-##
-##    elif agent_name=='seqLAC':
-##        agent = LexActorCritic(in_size=in_size, action_size=action_size,
-##                               reward_size=2, network='DNN', hidden=hidden, sequential=True)
-##        if prioritise_performance_over_safety:
-##            mode = 5
-##        else:
-##            mode = 3
-##
-##    elif agent_name=='LNAC':
-##        agent = LexNaturalActorCritic(in_size=in_size, action_size=action_size,
-##                                      reward_size=2, network='DNN', hidden=hidden, sequential=False)
-##        if prioritise_performance_over_safety:
-##            mode = 5
-##        else:
-##            mode = 3
-##
-##    elif agent_name=='seqLNAC':
-##        agent = LexNaturalActorCritic(in_size=in_size, action_size=action_size,
-##                                      reward_size=2, network='DNN', hidden=hidden, sequential=True)
-##        if prioritise_performance_over_safety:
-##            mode = 5
-##        else:
-##            mode = 3
-##
-    elif agent_name=='tabular':
+    ##    elif agent_name=='LAC':
+    ##        agent = LexActorCritic(in_size=in_size, action_size=action_size,
+    ##                               reward_size=2, network='DNN', hidden=hidden, sequential=False)
+    ##        if prioritise_performance_over_safety:
+    ##            mode = 5
+    ##        else:
+    ##            mode = 3
+    ##
+    ##    elif agent_name=='seqLAC':
+    ##        agent = LexActorCritic(in_size=in_size, action_size=action_size,
+    ##                               reward_size=2, network='DNN', hidden=hidden, sequential=True)
+    ##        if prioritise_performance_over_safety:
+    ##            mode = 5
+    ##        else:
+    ##            mode = 3
+    ##
+    ##    elif agent_name=='LNAC':
+    ##        agent = LexNaturalActorCritic(in_size=in_size, action_size=action_size,
+    ##                                      reward_size=2, network='DNN', hidden=hidden, sequential=False)
+    ##        if prioritise_performance_over_safety:
+    ##            mode = 5
+    ##        else:
+    ##            mode = 3
+    ##
+    ##    elif agent_name=='seqLNAC':
+    ##        agent = LexNaturalActorCritic(in_size=in_size, action_size=action_size,
+    ##                                      reward_size=2, network='DNN', hidden=hidden, sequential=True)
+    ##        if prioritise_performance_over_safety:
+    ##            mode = 5
+    ##        else:
+    ##            mode = 3
+    ##
+    elif agent_name == 'tabular':
         agent = Tabular(action_size=action_size)
         mode = 1
 
-    elif agent_name=='LexTabular':
+    elif agent_name == 'LexTabular':
         agent = LexTabular(action_size=action_size)
         if prioritise_performance_over_safety:
             mode = 5
         else:
             mode = 3
 
-    elif agent_name=='invLexTabular':
+    elif agent_name == 'invLexTabular':
         agent = LexTabular(action_size=action_size)
         mode = 5
 
-    elif agent_name=='random':
+    elif agent_name == 'random':
         agent = RandomAgent(action_size=action_size, continuous=continuous)
         mode = 1
 
-    elif agent_name=='LA2C':
+    elif agent_name == 'LA2C':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=False,
                                reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
         if prioritise_performance_over_safety:
@@ -158,7 +160,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
         else:
             mode = 3
 
-    elif agent_name=='seqLA2C':
+    elif agent_name == 'seqLA2C':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=False,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
         if prioritise_performance_over_safety:
@@ -166,7 +168,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
         else:
             mode = 3
 
-    elif agent_name=='LPPO':
+    elif agent_name == 'LPPO':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=False,
                                reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
         if prioritise_performance_over_safety:
@@ -174,7 +176,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
         else:
             mode = 3
 
-    elif agent_name=='seqLPPO':
+    elif agent_name == 'seqLPPO':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=False,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
         if prioritise_performance_over_safety:
@@ -182,7 +184,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
         else:
             mode = 3
 
-    elif agent_name=='LA2C2nd':
+    elif agent_name == 'LA2C2nd':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
                                reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
         if prioritise_performance_over_safety:
@@ -190,7 +192,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
         else:
             mode = 3
 
-    elif agent_name=='seqLA2C2nd':
+    elif agent_name == 'seqLA2C2nd':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
         if prioritise_performance_over_safety:
@@ -198,7 +200,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
         else:
             mode = 3
 
-    elif agent_name=='LPPO2nd':
+    elif agent_name == 'LPPO2nd':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=True,
                                reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
         if prioritise_performance_over_safety:
@@ -206,7 +208,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
         else:
             mode = 3
 
-    elif agent_name=='seqLPPO2nd':
+    elif agent_name == 'seqLPPO2nd':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=True,
                                reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
         if prioritise_performance_over_safety:
@@ -220,74 +222,76 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
     return agent, mode
 
+
 ##################################################
 
-def run(agent, env, interacts, max_ep_length, mode, save_location, int_action=False):
+# def run(agent, env, interacts, max_ep_length, mode, save_location, int_action=False):
+#     state = env.reset()
+#     state = np.expand_dims(state, axis=0)
+#     state = torch.tensor(state).float().to(device)
+#
+#     filename = './{}/{}/{}/{}-{}.txt'.format(save_location, game, agent_name, agent_name, process_id)
+#
+#     step = 0
+#
+#     for i in range(interacts):
+#
+#         action = agent.act(state)
+#         step += 1
+#
+#         if int_action:
+#             action = int(action)
+#         if type(action) != int:
+#             action = action.squeeze().cpu().float()
+#
+#         next_state, reward, done, info = env.step(action)
+#         next_state = np.expand_dims(next_state, axis=0)
+#         next_state = torch.tensor(next_state).float().to(device)
+#
+#         try:
+#             cost = info['cost']
+#         except:
+#             try:
+#                 cost = info['constraint_costs'][0]
+#             except:
+#                 cost = 0
+#
+#         if mode == 1:
+#             r = reward
+#         elif mode == 2:
+#             r = reward - cost
+#         elif mode == 3:
+#             r = [-cost, reward]
+#         elif mode == 4:
+#             r = [reward, cost]
+#         elif mode == 5:
+#             r = [reward, -cost]
+#
+#         # time.sleep(0.0001)
+#         agent.step(state, action, r, next_state, done)
+#
+#         if done or (step >= max_ep_length):
+#             step = 0
+#             state = env.reset()
+#             state = np.expand_dims(state, axis=0)
+#             state = torch.tensor(state).float().to(device)
+#         else:
+#             state = next_state
+#
+#         with open(filename, 'a') as f:
+#             f.write('{},{}\n'.format(reward, cost))
+#
+#         # if i % 1000000 == 0:
+#         #    agent.save_model('./{}/{}/{}/{}-{}-{}'.format(save_location, game, agent_name, agent_name, process_id, i))
+#
+#     agent.save_model('./{}/{}/{}/{}-{}'.format(save_location, game, agent_name, agent_name, process_id))
 
-    state = env.reset()
-    state = np.expand_dims(state, axis=0)
-    state = torch.tensor(state).float().to(device)
+# agent, env, args.interacts, args, max_ep_length, mode, save_location, int_action
+def run_episodic(agent, env, episodes, args, max_ep_length, mode, save_location, int_action=False):
+    datetime_string = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    filename = './{}/{}/{}/{}-{}.txt'.format(save_location, game, agent_name, agent_name, process_id)
-
-    step = 0
-
-    for i in range(interacts):
-
-        action = agent.act(state)
-        step += 1
-
-        if int_action:
-            action = int(action)
-        if type(action)!=int:
-            action = action.squeeze().cpu().float()
-
-        next_state, reward, done, info = env.step(action)
-        next_state = np.expand_dims(next_state, axis=0)
-        next_state = torch.tensor(next_state).float().to(device)
-
-        try:
-            cost = info['cost']
-        except:
-            try:
-                cost = info['constraint_costs'][0]
-            except:
-                cost = 0
-
-        if mode==1:
-            r = reward
-        elif mode==2:
-            r = reward-cost
-        elif mode==3:
-            r = [-cost, reward]
-        elif mode==4:
-            r = [reward, cost]
-        elif mode==5:
-            r = [reward, -cost]
-
-        #time.sleep(0.0001)
-        agent.step(state, action, r, next_state, done)
-
-        if done or (step >= max_ep_length):
-            step = 0
-            state = env.reset()
-            state = np.expand_dims(state, axis=0)
-            state = torch.tensor(state).float().to(device)
-        else:
-            state = next_state
-
-        with open(filename, 'a') as f:
-            f.write('{},{}\n'.format(reward, cost))
-
-        #if i % 1000000 == 0:
-        #    agent.save_model('./{}/{}/{}/{}-{}-{}'.format(save_location, game, agent_name, agent_name, process_id, i))
-
-    agent.save_model('./{}/{}/{}/{}-{}'.format(save_location, game, agent_name, agent_name, process_id))
-
-
-def run_episodic(agent, env, episodes, max_ep_length, mode, save_location, int_action=False):
-
-    filename = './{}/{}/{}/{}-{}.txt'.format(save_location, game, agent_name, agent_name, process_id)
+    file_pref = './{}/{}/{}/{}-{}-{}'.format(save_location, args.game, args.agent_name,
+                                             args.agent_name, datetime_string, process_id)
 
     for i in range(episodes):
 
@@ -304,7 +308,7 @@ def run_episodic(agent, env, episodes, max_ep_length, mode, save_location, int_a
 
             if int_action:
                 action = int(action)
-            if type(action)!=int:
+            if type(action) != int:
                 action = action.squeeze().cpu().float()
 
             next_state, reward, done, info = env.step(action)
@@ -319,15 +323,15 @@ def run_episodic(agent, env, episodes, max_ep_length, mode, save_location, int_a
                 except:
                     cost = 0
 
-            if mode==1:
+            if mode == 1:
                 r = reward
-            elif mode==2:
-                r = reward-cost
-            elif mode==3:
+            elif mode == 2:
+                r = reward - cost
+            elif mode == 3:
                 r = [-cost, reward]
-            elif mode==4:
+            elif mode == 4:
                 r = [reward, cost]
-            elif mode==5:
+            elif mode == 5:
                 r = [reward, -cost]
 
             cum_reward += reward
@@ -337,30 +341,51 @@ def run_episodic(agent, env, episodes, max_ep_length, mode, save_location, int_a
 
             if done:
                 break
-            
+
             state = next_state
 
-        with open(filename, 'a') as f:
-            f.write('{},{}\n'.format(cum_reward, cum_cost))
+        with open(file_pref + '.txt', 'a') as f:
+            f.write(f'| Episode: {i:03d} |  '
+                    f'| Cumulative reward: {cum_reward:>8.3f} |  '
+                    f'| Cumulative cost: {cum_cost:>8.3f} |\n')
 
-        #if i % 5000 == 0:
+        # if i % 5000 == 0:
         #    agent.save_model('./{}/{}/{}/{}-{}-{}'.format(save_location, game, agent_name, agent_name, process_id, i))
 
-    agent.save_model('./{}/{}/{}/{}-{}'.format(save_location, game, agent_name, agent_name, process_id))
-
+    agent.save_model(file_pref)
 
 
 ##################################################
 
-# agent_name, game, interacts = 'LPPO', 'CartSafe', 10000
+# TODO change default running command in README
 
-agent_name = sys.argv[1]
-game = sys.argv[2]
-interacts = int(sys.argv[3])
+# agent_name, game, interacts = 'LPPO', 'CartSafe', 10000
+parser = argparse.ArgumentParser(description="Run lexico experiments")
+
+agent_names = ['AC', 'DQN', 'LDQN','RCPO','VaR_PG','VaR_AC','AproPO', 'tabular','LexTabular','invLexTabular', 'random',
+               'LA2C', 'seqLA2C', 'LPPO', 'seqLPPO', 'LA2C2nd', 'seqLA2C2nd', 'LPPO2nd', 'seqLPPO2nd']
+
+parser.add_argument("--agent_name", type=str, default="tabular", choices=agent_names,
+                    help="The name of the type of agent (e.g AC, DQN, LDQN)")
+
+game_names = ['CartSafe', 'GridNav', 'MountainCarContinuousSafe', 'MountainCar',
+              'MountainCarSafe', 'BalanceBotEnv', 'Gaussian']
+
+parser.add_argument("--game", type=str, default="Gaussian", choices=game_names,
+                    help="The name of the game to train on e.g. 'MountainCarSafe', 'Gaussian', 'CartSafe':")
+
+# TODO Ask what interacts is for - episodes vs tasks vs interacts - rename to num_episodes
+parser.add_argument("--interacts", type=int, default=10, help="IDK what this does")
+
+args = parser.parse_args()
+
+# agent_name = sys.argv[1]
+# game = sys.argv[2]
+# interacts = int(sys.argv[3])
 
 save_location = 'results'
 
-os.makedirs('./{}/{}/{}'.format(save_location, game, agent_name), exist_ok=True)
+os.makedirs('./{}/{}/{}'.format(save_location, args.game, args.agent_name), exist_ok=True)
 process_id = str(time.time())[-5:]
 
 seed = int(process_id)
@@ -375,73 +400,75 @@ max_ep_length = 500
 
 ##################################################
 
-if game == 'CartSafe':
+if args.game == 'CartSafe':
     hid = 8
-    int_action=True
+    int_action = True
     max_ep_length = 300
 
-elif game == 'GridNav':
+elif args.game == 'GridNav':
     hid = 128
     int_action = True
     max_ep_length = 50
 
-elif game == 'MountainCarContinuousSafe':
+elif args.game == 'MountainCarContinuousSafe':
     hid = 32
     cont = True
     max_ep_length = 200
 
-elif game == 'MountainCar':
+elif args.game == 'MountainCar':
     hid = 32
     int_action = True
     max_ep_length = 200
 
-elif game == 'MountainCarSafe':
+elif args.game == 'MountainCarSafe':
     hid = 32
     int_action = True
     max_ep_length = 300
 
-elif game == 'BalanceBotEnv':
+elif args.game == 'BalanceBotEnv':
     hid = 32
     max_ep_length = 300
     cont = True
 
-elif game == 'Gaussian':
+elif args.game == 'Gaussian':
     hid = 8
     cont = True
     max_ep_length = 200
 
 else:
-    print('Invalid environment specification \"{}\"'.format(game))
+    print('Invalid environment specification \"{}\"'.format(args.game))
 
 ##################################################
 
-if game == 'BalanceBotEnv':
+# TODO Some of these IF cases seem never to be triggered - can I remove them?
+
+if args.game == 'BalanceBotEnv':
     env = BalanceBot()
     action_size = 2
     in_size = 32
-    
-elif game == 'MountainCarSafe':
+
+elif args.game == 'MountainCarSafe':
     env = MountainCarSafe()
     action_size = 3
     in_size = 2
 
-#elif game == 'GridNav':
+# elif game == 'GridNav':
 #    env = GridNav()
 #    action_size = 4
 #    in_size = 625
-    
-elif game == 'Gaussian':
+
+elif args.game == 'Gaussian':
     env = Simple1DEnv()
     action_size = 1
     in_size = 1
 
-elif game == 'CartSafe':
+elif args.game == 'CartSafe':
     env = CartSafe()
     action_size = 2
     in_size = 4
-    
+
 else:
-    env = gym.make(game + '-v0')
+    env = gym.make(args.game + '-v0')
     try:
         action_size = env.action_space.n
     except:
@@ -449,17 +476,7 @@ else:
     in_size = len(env.observation_space.high)
 
 ##################################################
-    
-agent, mode = make_agent(agent_name, in_size, action_size, hid, 'DNN', cont)
 
-run_episodic(agent, env, interacts, max_ep_length, mode, save_location, int_action)
+agent, mode = make_agent(args.agent_name, in_size, action_size, hid, 'DNN', cont)
 
-
-
-
-
-
-
-
-
-
+run_episodic(agent, env, args.interacts, args, max_ep_length, mode, save_location, int_action)
