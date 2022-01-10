@@ -26,6 +26,7 @@ import os# , sys, math
 import argparse
 from src.envs import get_env_and_params, env_names
 # import copy
+from tqdm import tqdm
 
 import gym
 
@@ -62,7 +63,7 @@ class TrainingParameters():
     def __init__(self,
                  agent_name: str,
                  env_name: str,
-                 interacts: int,
+                 num_episodes: int,
                  save_location: str = "results",
                  network: str = "DNN",
                  tb_log_path: str = None
@@ -72,7 +73,7 @@ class TrainingParameters():
         assert (network in ["CNN", "DNN"])
         self.agent_name = agent_name
         self.env_name = env_name
-        self.interacts = interacts
+        self.num_episodes = num_episodes
         self.save_location = save_location
         self.network = network
         self.tb_log_path = tb_log_path
@@ -94,17 +95,25 @@ class TrainingParameters():
 # device = torch.device("cpu")
 
 
-def run_episodic(agent, env, episodes, args, max_ep_length, mode, save_location, file_pref,
-                 device, int_action=False, tb_log_path=None, env_name=None):
+def run_episodic(agent, env, num_episodes, args, max_ep_length, mode, save_location, file_pref,
+                 device, int_action=False, tb_log_path=None, agent_name=None, env_name=None, show_ep_prog_bar=False):
     internal_train_log = []
+    if env_name == "Bandit":
+        action_seq = []
+        dt_string = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        bandit_extra_dir = os.path.join("runs_bandit_extra", agent_name, dt_string)
+        bandit_extra_writer = SummaryWriter(log_dir=bandit_extra_dir)
     if tb_log_path is None:
-        writer = SummaryWriter()
+        writer = SummaryWriter(comment="_" + agent_name)
     else:
-        print(tb_log_path)
         writer = SummaryWriter(log_dir=tb_log_path)
 
-    for i in range(episodes):
-
+    if show_ep_prog_bar:
+        episode_iter = tqdm(range(num_episodes))
+    else:
+        episode_iter = range(num_episodes)
+    total_interacts = 0
+    for i in episode_iter:
         state = env.reset()
         state = np.expand_dims(state, axis=0)
         state = torch.tensor(state).float().to(device)
@@ -113,8 +122,12 @@ def run_episodic(agent, env, episodes, args, max_ep_length, mode, save_location,
         cum_cost = 0
 
         for j in range(max_ep_length):
-
             action = agent.act(state)
+
+            if env_name=="Bandit":
+                action_seq.append(action)
+
+            total_interacts += 1
 
             if int_action:
                 action = int(action)
@@ -164,12 +177,26 @@ def run_episodic(agent, env, episodes, args, max_ep_length, mode, save_location,
         #    agent.save_model('./{}/{}/{}/{}-{}-{}'.format(save_location, game, agent_name, agent_name, process_id, i))
 
         internal_train_log.append((i, cum_reward, cum_cost))
-        if env_name is None:
-            writer.add_scalar("Reward/train", cum_reward, i)
-            writer.add_scalar("Cost/train", cum_cost, i)
-        else:
-            writer.add_scalar(f"{env_name}/Reward/train", cum_reward, i)
-            writer.add_scalar(f"{env_name}/Cost/train", cum_cost, i)
+
+        writer.add_scalar(f"{env_name}/Reward", cum_reward, i)
+        writer.add_scalar(f"{env_name}/Cost", cum_cost, i)
+
+        from src.learners_other import Tabular
+        if total_interacts%100 == 0 and env_name == "Bandit" and isinstance(agent, Tabular):
+            for state in agent.Q.keys():
+                for action in agent.Q[state].keys():
+                    bandit_extra_writer.add_scalar(f"{env_name}/Reward/train/{state}-{action}",  agent.Q[state][action], i)
+
+    if env_name == "Bandit":
+        for a_name in [0,1,2]:
+            resolution = 100
+            split = np.array([1 if a == a_name else 0 for a in action_seq])
+            running_mean_1 = np.array([split[0:i+1].mean() for i in range(resolution-1)])
+            running_mean_2 = np.convolve(split, np.ones(resolution)/resolution, mode='valid')
+            running_mean = np.concatenate((running_mean_1, running_mean_2), axis=0)
+            for i, m in enumerate(running_mean):
+                bandit_extra_writer.add_scalar(f"{env_name}/Rolling {resolution} freq. of action {a_name}", m, i)
+
     agent.save_model(file_pref)
     writer.flush()
     return internal_train_log
@@ -189,8 +216,9 @@ def get_train_params_from_args():
     parser.add_argument("--env_name", type=str, default="Gaussian", choices=env_names,
                         help="The name of the game to train on e.g. 'MountainCarSafe', 'Gaussian', 'CartSafe':")
 
-    # TODO Ask what interacts is for - episodes vs tasks vs interacts - rename to num_episodes
-    parser.add_argument("--interacts", type=int, default=10, help="IDK what this does")
+    parser.add_argument("--num_episodes", type=int, default=10, help="IDK what this does")
+
+    # TODO IMPLEMENT NUM_INTERACTS
 
     parser.add_argument("--save_location", type=str, default="results",
                         help="Which directory should results be saved in?")
@@ -200,7 +228,7 @@ def get_train_params_from_args():
 
     return TrainingParameters(agent_name=args.agent_name,
                               env_name=args.env_name,
-                              interacts=args.interacts,
+                              num_episodes=args.num_episodes,
                               save_location=args.save_location,
                               network=args.network)
 
@@ -222,7 +250,7 @@ def get_train_params_from_args():
 #     return arg_spoofs
 
 
-def train_from_params(train_params : TrainingParameters):
+def train_from_params(train_params : TrainingParameters, show_ep_prog_bar=False):
     device = torch.device("cpu")
 
     env, env_params = get_env_and_params(train_params.env_name)
@@ -232,7 +260,8 @@ def train_from_params(train_params : TrainingParameters):
                              action_size=env_params["action_size"],
                              hidden=env_params["hid"],
                              network=train_params.network,
-                             continuous=env_params["cont"])
+                             continuous=env_params["cont"],
+                             tab_q_init=env_params["tab_q_init"])
 
     os.makedirs('./{}/{}/{}'.format(train_params.save_location, train_params.env_name, train_params.agent_name), exist_ok=True)
     process_id = str(time.time())[-5:]
@@ -244,12 +273,17 @@ def train_from_params(train_params : TrainingParameters):
     file_pref = './{}/{}/{}/{}-{}-{}'.format(train_params.save_location, train_params.env_name, train_params.agent_name,
                                              train_params.agent_name, datetime_string, process_id)
 
-    return run_episodic(agent, env, train_params.interacts, train_params, env_params["max_ep_length"],
+    if train_params.num_episodes == -1:
+        train_params.num_episodes = env_params["estimated_ep_required"]
+
+    return run_episodic(agent, env, train_params.num_episodes, train_params, env_params["max_ep_length"],
                         mode, train_params.save_location, device=device,
                         int_action=env_params["int_action"], file_pref=file_pref,
-                        tb_log_path=train_params.tb_log_path, env_name=train_params.env_name)
+                        tb_log_path=train_params.tb_log_path, agent_name=train_params.agent_name,
+                        env_name=train_params.env_name,
+                        show_ep_prog_bar=show_ep_prog_bar)
 
 
 if __name__ == "__main__":
     params = get_train_params_from_args()
-    train_from_params(params)
+    train_from_params(params, show_ep_prog_bar=True)

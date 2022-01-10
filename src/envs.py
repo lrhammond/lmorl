@@ -121,7 +121,7 @@ class GridNav:
 class Simple1DEnv:
 
     def __init__(self):
-        self.mu  = np.random.uniform(low=-1.0, high=1.0)
+        self.mu  = np.random.uniform(low=-2.0, high=2.0)
         self.var = np.random.uniform(low=0.1, high=1.0)
 
     def reset(self):
@@ -134,40 +134,86 @@ class Simple1DEnv:
         print('#############################')
 
     # TODO Gaussian is broken?
+
     def step(self, action):
 
         reward = math.e**(-action**2/2)/(2*math.pi)**0.5
 
         return 0, reward, False, {}
 
+class ThreeArmedBandit:
 
+    def __init__(self):
+        # We randomly generate the means of the payoffs
+        # To enable learning between episodes,
+        #  setting the last arm to have better payoff in expectation
+        self.mus = [0.3, 0.5, 0.7]
+        self.episode_interacts = 0
+
+    def reset(self):
+        self.episode_interacts=0
+        return 0
+
+    def render(self):
+        print('#############################')
+        print(self.mus)
+        print('#############################')
+
+    def step(self, action):
+        self.episode_interacts += 1
+        assert(action in [0,1,2])
+        reward = self.mus[action] + np.random.uniform(low=-0.3, high=0.3)
+
+        # next_state, reward, done, info
+        return 0, reward, (self.episode_interacts >= 100), {}
+
+
+
+# TODO - probably move these to be attributes of the env objects?
+# TODO - replace "tab_q_init" with max reward, use to calculate tab_q_init equivalent
 env_dict = {
-    'Gaussian': {
-        "env": Simple1DEnv,
+    'Bandit': {
+        "env": ThreeArmedBandit,
         "hid": 8,
-        "action_size": 1,
-        "int_action": False,
+        "action_size": 3,
         "in_size": 1,
-        "cont": True,
-        "max_ep_length": 200},
+        "int_action": True,
+        "cont": False,
+        "max_ep_length": 100,
+        "tab_q_init": 100,
+        "estimated_ep_required": 1000},
+
+# TODO - implement for continuous
+    # 'Gaussian': {
+    #     "env": Simple1DEnv,
+    #     "hid": 8,
+    #     "action_size": 1,
+    #     "in_size": 1,
+    #     "int_action": False,
+    #     "cont": True,
+    #     "max_ep_length": 100},
 
     'CartSafe': {
         "env": CartSafe,
         "in_size": 4,
         "action_size": 2,
         "hid": 8,
-        "cont": False,
         "int_action": True,
-        "max_ep_length": 300},
+        "cont": False,
+        "max_ep_length": 300,
+        "tab_q_init": 300,
+        "estimated_ep_required": 40000},
 
     'GridNav': {
         "env": None,
         "in_size": 625,
         "action_size": 4,
         "hid": 128,
-        "cont": False,
         "int_action": True,
-        "max_ep_length": 50},
+        "cont": False,
+        "max_ep_length": 50,
+        "tab_q_init": 300,
+        "estimated_ep_required": 20000}
 
 # The remaining envs are untested and so disabled
     # 'MountainCarContinuousSafe': {

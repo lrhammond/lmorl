@@ -3,11 +3,26 @@ from src.learners_other import ActorCritic, DQN, RCPO, VaR_PG, VaR_AC, AproPO, T
 
 agent_names = ["tabular", "DQN", "AC", "random", "LDQN", "LA2C", "LPPO", "AproPO", "RCPO", "VaR_AC"]
 
+# TODO - expand these lists
+# TODO - implement and test continuous agents
+cont_agent_names = ["AC", "random"]
+
+disc_agent_names = [
+    "tabular",
+    "DQN",
+    "random",
+    # "AC"
+]
+
 # Although more agents have been implemented, we disable them as they havent been tested
 # agent_names = ['AC', 'DQN', 'LDQN','RCPO','VaR_PG','VaR_AC','AproPO', 'tabular','LexTabular','invLexTabular', 'random',
 #                'LA2C', 'seqLA2C', 'LPPO', 'seqLPPO', 'LA2C2nd', 'seqLA2C2nd', 'LPPO2nd', 'seqLPPO2nd']
 
-def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN', continuous=False, alt_lex=False):
+# TODO - refactor to avoid cont vs discrete clashes
+
+def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
+               continuous=False, alt_lex=False, tab_q_init=1):
+
     prioritise_performance_over_safety = False
 
     assert (agent_name in agent_names)
@@ -57,7 +72,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
         mode = 4
 
     elif agent_name == 'tabular':
-        agent = Tabular(action_size=action_size)
+        agent = Tabular(action_size=action_size, initialisation=tab_q_init)
         mode = 1
 
     elif agent_name == 'LexTabular':

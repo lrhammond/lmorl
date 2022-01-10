@@ -14,6 +14,8 @@ import torchvision.transforms as T
 from torch.distributions import Categorical
 from torch.autograd import Variable
 
+
+# TODO - parameterize these
 # Constants
 BUFFER_SIZE = int(1e4)
 BATCH_SIZE = 128
@@ -104,6 +106,9 @@ class ActorCritic:
         self.actor_optimizer.step()
 
         self.actor.eval()
+        first_params = self.actor.parameters().__next__()
+        # TODO - why isn't this updating?
+        print(first_params.mean(), first_params.var())
 
 
     def update_critic(self, experiences):
@@ -123,6 +128,9 @@ class ActorCritic:
         self.critic_optimizer.step()
 
         self.critic.eval()
+        first_params = self.critic.parameters().__next__()
+        # TODO - why doesn't this update?
+        print("critic", first_params.mean(), first_params.var())
 
 
     def update(self, experiences):
@@ -220,6 +228,7 @@ class Tabular:
         self.t = 0
 
     def act(self, state):
+
         self.t += 1
 
         state = str(state)
@@ -235,6 +244,7 @@ class Tabular:
         return action
 
     def step(self, state, action, reward, next_state, done):
+
         state = str(state)
         next_state = str(next_state)
         self.init_state(state)
@@ -245,17 +255,12 @@ class Tabular:
         alpha = 0.01
         self.Q[state][action] = (1 - alpha) * self.Q[state][action] + alpha * target
 
+
     def init_state(self, state):
         if not state in self.Q.keys():
             self.Q[state] = {a:self.initialisation for a in self.actions}
 
     def save_model(self, root):
-        if False: # Option for debugging
-            for k, i in self.Q.items():
-                print()
-                print(k)
-                print(i)
-
         with open('{}-model.pt'.format(root), 'wb') as f:
             pickle.dump(self.Q, f, pickle.HIGHEST_PROTOCOL)
 
