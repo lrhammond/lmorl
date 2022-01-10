@@ -298,7 +298,7 @@ class ContinuousPolicyCNN2(nn.Module):
 ##################################################
 
 def make_network(network_purpose, network_type, in_size, hidden, out_size,
-                 continuous=False, extra_input=False, ):
+                 is_action_cont=False, extra_input=False, ):
 
     assert network_purpose in ['policy', 'prediction']
     assert network_type in ['DNN', 'CNN']
@@ -320,7 +320,7 @@ def make_network(network_purpose, network_type, in_size, hidden, out_size,
     if network_purpose == 'policy':
 
         if network_type == 'DNN':
-            if continuous:
+            if is_action_cont:
                 if extra_input:
                     net = ContinuousPolicyDNN(in_size+1, out_size, hidden)
                 else:
@@ -332,7 +332,7 @@ def make_network(network_purpose, network_type, in_size, hidden, out_size,
                     net = PolicyDNN(in_size, out_size, hidden)
 
         if network_type == 'CNN':
-            if continuous:
+            if is_action_cont:
                 if extra_input:
                     net = ContinuousPolicyCNN2(int((in_size/3)**0.5), channels=3,
                                                convs=hidden, action_size=action_size, hidden=hidden)

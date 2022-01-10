@@ -4,6 +4,9 @@ mpl.rcParams['agg.path.chunksize'] = 10000
 import matplotlib.pyplot as plt
 import numpy as np
 import os, collections
+from tensorflow.python.summary.summary_iterator import summary_iterator
+
+raise Exception("Not yet functional")
 
 colours = {'AC':'blue',
            'DQN':'orange',
@@ -34,6 +37,8 @@ colours = {'AC':'blue',
 algs = ['AC','DQN','random','LDQN','LA2C','LPPO','VaR_AC','AproPO','RCPO']
 name = 'all'
 
+base_path = "/.hidden/run_archive/2/runs_tests/learn_tests/20220110-171827"
+
 for mode in ['r','c']:
 
     max_steps_avg = None
@@ -51,11 +56,11 @@ for mode in ['r','c']:
         
         #for run in range(runs):
         
-        for _,_, files in os.walk('./{}/'.format(alg)):
+        for _,_, files in os.walk(base_path): # './{}/'.format(alg)):
 
             for file in files:
             
-                if '.txt' in file:
+                if '.txt' or ".tfevents" in file:
 
                     print(file)
 
@@ -71,50 +76,69 @@ for mode in ['r','c']:
                     #long_run_reward = 0
                     #long_run_cost = 0
 
-                    with open('./{}/{}'.format(alg,file), 'r') as f:
-                        
-                        for i, line in enumerate(f):
-                            
-                            l = line.strip().split(',')
+                    xs = []
 
-                            if mode=='r':
-                                x = float(l[0])
-                            else:
-                                x = float(l[1])
+                    if '.txt' in file:
 
-                            if long_run:
-                                if max_steps_avg:
-                                    long_run_val *= len(last_few_vals)
-                                    if len(last_few_vals) == max_steps_avg:
-                                        long_run_val -= last_few_vals[0]
-                                    long_run_val += x
-                                    if len(last_few_vals) >= 1:
-                                        long_run_val /= len(last_few_vals)
-                                    
-                                    last_few_vals.append(x)
+                        with open('./{}/{}'.format(alg,file), 'r') as f:
+
+                            for line in f:
+
+                                l = line.strip().split(',')
+
+                                if mode=='r':
+                                    xs.append(float(l[0]))
                                 else:
-                                    long_run_val = (long_run_val*i + x)/(i+1)
-                                
-                            
-                            if long_run:
-                                vals.append(long_run_val)
+                                    xs.append(float(l[1]))
+
+                    elif '.tfevents' in file:
+
+                        s_iter = summary_iterator(os.path.join(base_path, file))
+                        for i, line in enumerate(s_iter):
+                            if i > 1000: break
+                            if mode == "r":
+                                for val in line.summary.value:
+                                    if "Reward" in val.tag:
+                                        xs.append(val.simple_value)
+
+                            elif mode == "c":
+                                for val in line.summary.value:
+                                    if "Cost" in val.tag:
+                                        xs.append(val.simple_value)
+                    print(xs)
+                    for i, x in enumerate(xs):
+                        if long_run:
+                            if max_steps_avg:
+                                long_run_val *= len(last_few_vals)
+                                if len(last_few_vals) == max_steps_avg:
+                                    long_run_val -= last_few_vals[0]
+                                long_run_val += x
+                                if len(last_few_vals) >= 1:
+                                    long_run_val /= len(last_few_vals)
+
+                                last_few_vals.append(x)
                             else:
-                                vals.append(x)
+                                long_run_val = (long_run_val*i + x)/(i+1)
 
-                            #r = float(l[0])
-                            #c = float(l[1])
-                                
-                            #long_run_reward = (long_run_reward*i + r)/(i+1)
-                            #long_run_cost = (long_run_cost*i + c)/(i+1)
+                        if long_run:
+                            vals.append(long_run_val)
+                        else:
+                            vals.append(x)
 
-                            #rewards.append(long_run_reward)
-                            #costs.append(long_run_cost)
+                        #r = float(l[0])
+                        #c = float(l[1])
 
-                            #rewards.append(r)
-                            #costs.append(c)
+                        #long_run_reward = (long_run_reward*i + r)/(i+1)
+                        #long_run_cost = (long_run_cost*i + c)/(i+1)
 
-                        #data[alg].append((rewards, costs))
-                        data[alg].append(vals)
+                        #rewards.append(long_run_reward)
+                        #costs.append(long_run_cost)
+
+                        #rewards.append(r)
+                        #costs.append(c)
+
+                    #data[alg].append((rewards, costs))
+                    data[alg].append(vals)
 
 
     for alg in algs:

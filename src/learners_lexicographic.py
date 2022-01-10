@@ -133,7 +133,7 @@ class LexDQN:
 class LexActorCritic:
     
     
-    def __init__(self, in_size, action_size, mode, reward_size=2, second_order=False, sequential=False, network='DNN', hidden=16, continuous=False, extra_input=False):
+    def __init__(self, in_size, action_size, mode, reward_size=2, second_order=False, sequential=False, network='DNN', hidden=16, is_action_cont=False, extra_input=False):
 
         if mode != 'a2c' and mode != 'ppo':
             print("Error: mode must be \'a2c\' or \'ppo\'")
@@ -145,10 +145,10 @@ class LexActorCritic:
         self.reward_size = reward_size
 
         self.action_size = action_size
-        self.continuous = continuous
+        self.is_action_cont = is_action_cont
         
-        self.actor = make_network('policy', network, in_size, hidden, action_size, continuous, extra_input)
-        self.critic = make_network('prediction', network, in_size, hidden, reward_size, continuous, extra_input)
+        self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont, extra_input)
+        self.critic = make_network('prediction', network, in_size, hidden, reward_size, is_action_cont, extra_input)
         self.mu = [0.0 for _ in range(reward_size - 1)]
         self.j = [0.0 for _ in range(reward_size - 1)]
         self.recent_losses = [collections.deque(maxlen=25) for i in range(reward_size)]
@@ -191,7 +191,7 @@ class LexActorCritic:
         
     
     def act(self, state):
-        if self.continuous:
+        if self.is_action_cont:
             mu, var = self.actor(state)
             mu = mu.data.cpu().numpy()
             sigma = torch.sqrt(var).data.cpu().numpy() 
@@ -305,7 +305,7 @@ class LexActorCritic:
 
     def get_log_probs(self, states, actions):
 
-        if self.continuous:
+        if self.is_action_cont:
             means, variances = self.actor(states.to(device))
             p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-3))
             p2 = - torch.log(torch.sqrt(2 * math.pi * variances))

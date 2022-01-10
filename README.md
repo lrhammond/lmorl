@@ -46,12 +46,22 @@ This will activate the relevant ARC modules, create a `conda` environment `venv`
 ## Running Experiments
 
 ### Default
+To test you installation, run:
+```commandline
+python -m src.run_batches humble_batch
+```
 
 Individual experiments may be run using:
+```commandline
+python -m src.train --agent_name=\_ --env_name=\_ --num_episodes=\_
+```
 
-```
-python src/main.py <agent_name> <robot> <task> <difficulty> <episodes> <iteration>
-```
+
+[//]: # (```)
+
+[//]: # (python src/main.py <agent_name> <robot> <task> <difficulty> <episodes> <iteration>)
+
+[//]: # (```)
 
 ### ARC
 
