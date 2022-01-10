@@ -9,9 +9,15 @@ cont_agent_names = ["AC", "random"]
 
 disc_agent_names = [
     "tabular",
-    "DQN",
-    "random",
-    # "AC"
+     "DQN",
+     "AC",
+     "random",
+     "LDQN",
+     "LA2C",
+     "LPPO",
+     "AproPO",
+     "RCPO",
+     "VaR_AC"
 ]
 
 # Although more agents have been implemented, we disable them as they havent been tested

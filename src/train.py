@@ -1,6 +1,29 @@
 # MAIN ORDER:
-# TODO get test.py running
+# TODO update "continuous" var name
+# TODO get  learnng
+# TODO get AC learnng
+# TODO get LDQN learnng
+# TODO get LA2C learnng
+# TODO get LPPO learnng
+# TODO get AproPO learnng
+# TODO get RCPO learnng
+# TODO get VaR_AC learnng
 # TODO get Joar's cartsafe working (+ learning) (ask for hyperparams)
+# BUFFER_SIZE = int(1e5)
+# BATCH_SIZE = 8
+# UPDATE_EVERY = 8
+# UPDATE_EVERY_EPS = 1
+#
+# EPSILON = 0.05
+# SLACK = 0.04
+# LAMBDA_LR_2 = 0.05
+#
+# LR = 1e-3
+#
+# update_steps = 10
+#
+# network size: 4 x 32 x 32 x 2
+# max_ep_length = 300
 # TODO Cartsafe working on cluster
 # TODO get one OpenAI's safety environment working on cluster (point, goal, lvl 1)
 # TODO look for existing hyper param + models for safety-gym
@@ -14,7 +37,7 @@
 
 # Main file for running experiments
 import datetime
-
+import inspect
 # import numpy as np
 
 import random
@@ -66,7 +89,7 @@ class TrainingParameters():
                  num_episodes: int,
                  save_location: str = "results",
                  network: str = "DNN",
-                 tb_log_path: str = None
+                 test_group_label: str = None
                  ):
         assert (agent_name in agent_names)
         assert (env_name in env_names)
@@ -76,8 +99,16 @@ class TrainingParameters():
         self.num_episodes = num_episodes
         self.save_location = save_location
         self.network = network
-        self.tb_log_path = tb_log_path
+        self.test_group_label = test_group_label
 
+    def render(self):
+        print()
+        print("===Training Parameters===")
+        for atr_name, atr in inspect.getmembers(self):
+            if not atr_name.startswith("_") and not inspect.ismethod(atr):
+                print(f"{atr_name}: {str(atr)}")
+        print("===  ===  =====  ===  ===")
+        print()
 
 ##################################################
 
@@ -179,6 +210,7 @@ def run_episodic(agent, env, num_episodes, args, max_ep_length, mode, save_locat
         internal_train_log.append((i, cum_reward, cum_cost))
 
         writer.add_scalar(f"{env_name}/Reward", cum_reward, i)
+
         writer.add_scalar(f"{env_name}/Cost", cum_cost, i)
 
         from src.learners_other import Tabular
@@ -250,7 +282,9 @@ def get_train_params_from_args():
 #     return arg_spoofs
 
 
-def train_from_params(train_params : TrainingParameters, show_ep_prog_bar=False):
+def train_from_params(train_params : TrainingParameters,
+                      session_pref=None,
+                      show_ep_prog_bar=False):
     device = torch.device("cpu")
 
     env, env_params = get_env_and_params(train_params.env_name)
@@ -279,7 +313,7 @@ def train_from_params(train_params : TrainingParameters, show_ep_prog_bar=False)
     return run_episodic(agent, env, train_params.num_episodes, train_params, env_params["max_ep_length"],
                         mode, train_params.save_location, device=device,
                         int_action=env_params["int_action"], file_pref=file_pref,
-                        tb_log_path=train_params.tb_log_path, agent_name=train_params.agent_name,
+                        tb_log_path=session_pref, agent_name=train_params.agent_name,
                         env_name=train_params.env_name,
                         show_ep_prog_bar=show_ep_prog_bar)
 

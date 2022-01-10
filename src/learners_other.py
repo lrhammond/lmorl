@@ -48,8 +48,8 @@ class ActorCritic:
         #self.actor_optimizer = optim.Adam(self.actor.parameters())
         #self.critic_optimizer = optim.Adam(self.critic.parameters())
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(),1e-5)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(),lr=1e-3)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(),1e-3)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(),lr=1e-2)
 
         if (torch.cuda.is_available() and not NO_CUDA):
             self.actor.cuda()

@@ -5,12 +5,12 @@ from tqdm import tqdm
 from datetime import datetime
 import os
 
-pairs = [(agent_name, env_name) for agent_name in disc_agent_names for env_name in env_names]
+pairs = [(agent_name, env_name) for agent_name in disc_agent_names for env_name in ["Bandit"]]
 successes = []
 failures = []
 
 train_logs = {(agent_name, env_name): None for agent_name, env_name in pairs}
-base_path = "./runs/learn_tests"
+base_path = "./runs_tests/agent_tests"
 tb_log_path_base = os.path.join(base_path,
                                 datetime.now().strftime('%Y%m%d-%H%M%S'))
 
@@ -21,7 +21,7 @@ for agent_name, env_name in pbar:
 
     tb_log_path = os.path.join(tb_log_path_base, f"{env_name}-{agent_name}")
     train_params = TrainingParameters(agent_name=agent_name, env_name=env_name,
-                                      num_episodes=-1, save_location="sanity_test_logs",
+                                      num_episodes=100, save_location="sanity_test_logs",
                                       tb_log_path=tb_log_path)
     try:
         train_from_params(train_params)

@@ -116,7 +116,7 @@ class GridNav:
 
     def close(self):
         self.env.close()
-        
+
 
 class Simple1DEnv:
 
@@ -168,6 +168,27 @@ class ThreeArmedBandit:
         return 0, reward, (self.episode_interacts >= 100), {}
 
 
+class SimpleContinuousAction:
+
+    def __init__(self):
+        self.episode_interacts = 0
+
+    def reset(self):
+        self.episode_interacts=0
+        return 0
+
+    def render(self):
+        print('#############################')
+        print("A simple cont action")
+        print('#############################')
+
+    def step(self, action):
+        reward =  math.e ** (- (action-0.5)**2)
+        self.episode_interacts += 1
+
+        # next_state, reward, done, info
+        return 0, reward, (self.episode_interacts >= 100), {}
+
 
 # TODO - probably move these to be attributes of the env objects?
 # TODO - replace "tab_q_init" with max reward, use to calculate tab_q_init equivalent
@@ -181,6 +202,17 @@ env_dict = {
         "cont": False,
         "max_ep_length": 100,
         "tab_q_init": 100,
+        "estimated_ep_required": 1000},
+
+    'SimpleContinuousAction': {
+        "env": SimpleContinuousAction,
+        "hid": 4,
+        "action_size": 1,
+        "in_size": 1,
+        "int_action": False,
+        "cont": True,
+        "max_ep_length": 100,
+        "tab_q_init": None,
         "estimated_ep_required": 1000},
 
 # TODO - implement for continuous
