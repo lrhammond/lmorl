@@ -1,4 +1,4 @@
-from src.constants import disc_agent_names
+from src.constants import disc_agent_names, lex_agents
 from src.TrainingParameters import TrainingParameters
 from src.constants import env_names
 
@@ -43,6 +43,16 @@ batch_definitions = {
             test_group_label="learn_tests")
 
         for agent_name in disc_agent_names for env_name in ["Bandit"]
+    ],
+
+    "learn_tests_CartSafe_short": [
+        TrainingParameters(
+            agent_name=agent_name,
+            env_name=env_name,
+            num_interacts=int(1e4),
+            test_group_label="learn_tests")
+
+        for agent_name in disc_agent_names for env_name in ["CartSafe"]
     ],
 
     "learn_tests_bandit_short_reward_size_1": [
@@ -119,5 +129,15 @@ batch_definitions = {
 
         for slack in [0.0, 0.2, 0.4, 0.6, 0.8, 1] for env_name in ["CartSafe"]
     ],
+
+    "fig_2_extra_lexico": [
+        TrainingParameters(
+            agent_name=agent_name,
+            env_name=env_name,
+            num_interacts=int(1e6),
+            test_group_label="fig_2_extra_lexico")
+
+        for agent_name in lex_agents for env_name in ["CartSafe"]
+    ]
 
 }

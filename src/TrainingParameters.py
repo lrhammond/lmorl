@@ -51,6 +51,8 @@ class TrainingParameters:
     constraints = [(0.3, 0.5),
                    (0.0, 0.1)]
 
+    lextab_on_policy: bool = False
+
     # After dataclass attributes are initialised, validate the training parameters
     def __post_init__(self):
         assert (self.agent_name in agent_names)
