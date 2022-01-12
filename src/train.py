@@ -10,7 +10,7 @@
 
 # Main file for running experiments
 from datetime import datetime
-import inspect
+
 import torch
 import random
 import time
@@ -20,61 +20,49 @@ from tqdm import tqdm
 
 import gym
 import src.constants as constants
+from src.TrainingParameters import TrainingParameters
 
 gym.logger.set_level(40)
 
 from torch.utils.tensorboard import SummaryWriter
-
-##################################################
-from src.make_agent import make_agent, agent_names
+from src.make_agent import make_agent
+from src.constants import agent_names
 from src.envs import *
 
 
-##################################################
+class InteractIter:
+    # Instantiates the iterator class
+    # Is stateful, but simplifies the control flow in training
 
-class TrainingParameters:
-    def __init__(self,
-                 agent_name: str,
-                 env_name: str,
-                 num_episodes: int,
-                 network: str = "DNN",
-                 test_group_label: str = None
-                 ):
-        print(agent_name)
-        assert (agent_name in agent_names)
-        assert (env_name in env_names)
-        assert (network in ["CNN", "DNN"])
-        self.agent_name = agent_name
-        self.env_name = env_name
-        self.num_episodes = num_episodes
-        self.network = network
-        self.test_group_label = test_group_label
+    def __init__(self, max_interactions: int):
+        self._max_interactions = max_interactions
+        self._cur_interactions = 0
+        self._cur_iterations = 0
 
-    def render_and_print(self):
-        print(self.render_to_string())
+    def __iter__(self):
+        return self
 
-    def render_to_string(self):
-        x = ""
-        for atr_name, atr in inspect.getmembers(self):
-            if not atr_name.startswith("_") and not inspect.ismethod(atr):
-                x += f" < {atr_name}: {str(atr)} >, "
-        return x
+    def __next__(self):
+        if self._max_interactions >= self._cur_interactions:
+            self._cur_iterations += 1
+            return self._cur_iterations
+        else:
+            raise StopIteration()
 
-    def render_to_file(self, dir):
-        x = self.render_to_string()
-        with open(dir, "w") as f: f.write(x)
+    def increment(self):
+        self._cur_interactions += 1
 
 
 def train_from_params(train_params: TrainingParameters,
                       session_pref: str,
-                      show_ep_prog_bar=False):
-
+                      show_ep_prog_bar=True):
     device = torch.device("cpu")
 
     env = get_env_by_name(train_params.env_name)
 
     agent, mode = make_agent(agent_name=train_params.agent_name,
                              env=env,
+                             train_params=train_params,
                              network=train_params.network)
 
     process_id = str(time.time())[-5:]
@@ -82,25 +70,31 @@ def train_from_params(train_params: TrainingParameters,
     random.seed(seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
-
     run_dir = os.path.join(session_pref, train_params.env_name, train_params.agent_name + "-" + str(process_id))
     os.makedirs(run_dir, exist_ok=True)
-
     writer = SummaryWriter(log_dir=run_dir)
     train_params.render_to_file(run_dir + ".params")
-
-    # TODO - Add ep length and num episodes to argparse + Trainparameters
 
     if train_params.num_episodes == -1:
         train_params.num_episodes = env.rec_episodes
 
     max_ep_length = env.rec_ep_length
 
-    if show_ep_prog_bar:
-        episode_iter = tqdm(range(train_params.num_episodes))
-    else:
-        episode_iter = range(train_params.num_episodes)
     total_interacts = 0
+
+    if not train_params.is_interact_mode:
+        interact_iter = "Undefined"
+        if show_ep_prog_bar:
+            episode_iter = tqdm(range(train_params.num_episodes), colour="green")
+        else:
+            episode_iter = range(train_params.num_episodes)
+    else:
+        interact_iter = InteractIter(train_params.num_interacts)
+
+        if show_ep_prog_bar:
+            episode_iter = tqdm(interact_iter)
+        else:
+            episode_iter = interact_iter
 
     # ========== TRAINING LOOP ==========
     for i in episode_iter:
@@ -115,6 +109,8 @@ def train_from_params(train_params: TrainingParameters,
             action = agent.act(state)
 
             total_interacts += 1
+            if train_params.is_interact_mode:
+                interact_iter.increment()
 
             if env.is_action_cont:
                 action = int(action)
@@ -122,7 +118,7 @@ def train_from_params(train_params: TrainingParameters,
                 action = action.squeeze().cpu().float()
 
             next_state, reward, done, info = env.step(action)
-            # print(i, action, reward)
+
             next_state = np.expand_dims(next_state, axis=0)
             next_state = torch.tensor(next_state).float().to(device)
 
@@ -155,9 +151,8 @@ def train_from_params(train_params: TrainingParameters,
 
             state = next_state
 
-
-        # if i % 5000 == 0:
-        #    agent.save_model('./{}/{}/{}/{}-{}-{}'.format(save_location, game, agent_name, agent_name, process_id, i))
+        if train_params.save_every_n is not None and i % train_params.save_every_n == 0:
+            agent.save_model(run_dir)
 
         writer.add_scalar(f"{train_params.env_name}/Reward", cum_reward, i)
 
@@ -170,17 +165,16 @@ def train_from_params(train_params: TrainingParameters,
 ##################################################
 
 def get_train_params_from_args():
-
-    # agent_name, game, interacts = 'LPPO', 'CartSafe', 10000
+    # TODO - add option for num interacts
     parser = argparse.ArgumentParser(description="Run lexico experiments")
 
     parser.add_argument("--agent_name", type=str, default="tabular", choices=agent_names,
-                        help="The name of the type of agent (e.g AC, DQN, LDQN)")
+                        help="The name of the type of agent")
 
-    parser.add_argument("--env_name", type=str, default="Gaussian", choices=env_names,
-                        help="The name of the game to train on e.g. 'MountainCarSafe', 'Gaussian', 'CartSafe':")
+    parser.add_argument("--env_name", type=str, default="Bandit", choices=env_names,
+                        help="The name of the game to train on")
 
-    parser.add_argument("--num_episodes", type=int, default=10, help="IDK what this does")
+    parser.add_argument("--num_episodes", type=int, default=10, help="The number of episodes to train on")
 
     # TODO IMPLEMENT NUM_INTERACTS
 
@@ -199,5 +193,4 @@ if __name__ == "__main__":
                                 datetime.now().strftime('%Y%m%d-%H%M%S'))
 
     train_from_params(params,
-                      session_pref=session_pref,
-                      show_ep_prog_bar=True)
+                      session_pref=session_pref)

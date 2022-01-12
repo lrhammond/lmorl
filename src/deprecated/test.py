@@ -150,7 +150,8 @@ max_step = 300
 int_action = False
 
 env, env_params = get_env_and_params(game)
-agent, mode = make_agent(agent_name, env_params.in_size,
+agent, mode = make_agent(agent_name,
+                         env_params.in_size,
                          env_params.action_size,
                          env_params.hid, 'DNN',
                          env_params.cont, alt_lex=False)

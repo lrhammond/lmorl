@@ -1,6 +1,7 @@
 import numpy as np
 import gym_safety # May falsely display as unused
 import gym
+from src.constants import env_names
 
 
 class Env:
@@ -131,9 +132,7 @@ env_dict = {
     'CartSafe': CartSafe,
     'GridNav': GridNav
 }
-
-env_names = list(env_dict.keys())
-
+assert(list(env_dict.keys()) == env_names)
 
 def get_env_by_name(game_name):
     return env_dict[game_name]()

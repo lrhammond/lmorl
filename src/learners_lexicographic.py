@@ -2,124 +2,110 @@
 
 from src.networks import *
 
-import math, random, pickle, copy, time
+import math
+import random
+import pickle
+import time
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
+
 from torch.distributions import Categorical
-from torch.autograd import Variable
 
-# Constants
-UPDATE_EVERY = 4
-BUFFER_SIZE = int(1e4)
-BATCH_SIZE = 128
-
-EPSILON = 0.05
-SLACK = 0.05
-#LAMBDA_RL_2 = 0.05
-#UPDATE_EVERY_EPS = 32
-
-TOL = 1
-TOL2 = 1
-CONVERGENCE_LENGTH = 1000
-CONVERGENCE_DEVIATION = 0.04
-
-NO_CUDA = True
 
 class LexDQN:
-    
+
     # lexicographic DQN
-    
-    def __init__(self, in_size, action_size, reward_size=2, network='DNN', hidden=16):
-            
-        self.t = 0                                   # total number of frames observed
-        self.discount = 0.99                         # discount
-        
+
+    def __init__(self, in_size, action_size, buffer_size, batch_size, no_cuda,
+                 update_every, slack, epsilon,
+                 reward_size=2, network='DNN', hidden=16):
+        self.epsilon = epsilon
+        self.buffer_size = buffer_size
+        self.batch_size = batch_size
+        self.no_cuda = no_cuda
+        self.update_every = update_every
+        self.slack = slack
+        self.t = 0  # total number of frames observed
+        self.discount = 0.99  # discount
+
         self.actions = list(range(action_size))
         self.reward_size = reward_size
         self.action_size = action_size
-        
-        if network=='DNN':
-            self.model  = DNN(in_size, (reward_size, action_size), hidden)
-        elif network=='CNN':
-            self.model = CNN(int((in_size/3)**0.5), channels=3, 
-                             out_size=(reward_size, action_size), 
+
+        if network == 'DNN':
+            self.model = DNN(in_size, (reward_size, action_size), hidden)
+        elif network == 'CNN':
+            self.model = CNN(int((in_size / 3) ** 0.5), channels=3,
+                             out_size=(reward_size, action_size),
                              convs=hidden, hidden=hidden)
         else:
             print('invalid network specification')
             assert False
-        
-        self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
+
+        self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
         self.optimizer = optim.Adam(self.model.parameters())
-        
-        if (torch.cuda.is_available() and not NO_CUDA):
+
+        if torch.cuda.is_available() and not self.no_cuda:
             self.model.cuda()
-    
-    
+
     def act(self, state):
 
-        if np.random.choice([True,False], p=[EPSILON, 1-EPSILON]):
+        if np.random.choice([True, False], p=[self.epsilon, 1 - self.epsilon]):
             return random.choice(self.actions)
-            
+
         Q = self.model(state)[0]
         permissible_actions = self.permissible_actions(Q)
         return random.choice(permissible_actions)
- 
 
     def permissible_actions(self, Q):
-        
         permissible_actions = self.actions
-        
+
         for i in range(self.reward_size):
-            Qi = Q[i,:]
+            Qi = Q[i, :]
             m = max([Qi[a] for a in permissible_actions])
-            r = SLACK
-            permissible_actions = [a for a in permissible_actions if Qi[a] >= m-r*abs(m)]
-            
+            r = self.slack
+            permissible_actions = [a for a in permissible_actions if Qi[a] >= m - r * abs(m)]
+
         return permissible_actions
 
-    
     def lexmax(self, Q):
-        
+
         a = self.permissible_actions(Q)[0]
-        return Q[:,a]
-    
-    
+        return Q[:, a]
+
     def step(self, state, action, reward, next_state, done):
-        
+
         self.t += 1
         self.memory.add(state, action, reward, next_state, done)
-        
-        if self.t % UPDATE_EVERY == 0 and len(self.memory) > BATCH_SIZE:
+
+        if self.t % self.update_every == 0 and len(self.memory) > self.batch_size:
             experience = self.memory.sample()
             self.update(experience)
-                
-            
+
     def update(self, experiences):
- 
+
         states, actions, rewards, next_states, dones = experiences
-    
+
         criterion = torch.nn.MSELoss()
         self.model.train()
-        
+
         # probably slightly suboptimal
-        idx = torch.cat((actions,actions),1).reshape(-1, self.reward_size, 1)
+        idx = torch.cat((actions, actions), 1).reshape(-1, self.reward_size, 1)
         predictions = self.model(states.to(device)).gather(2, idx).squeeze()
-            
+
         with torch.no_grad():
             predictions_next = self.model(next_states).detach()
-            next_values = torch.stack([self.lexmax(Q) for Q in torch.unbind(predictions_next, dim=0)],dim=0)
-            
-        targets = rewards + (self.discount * next_values * (1-dones))
-        
+            next_values = torch.stack([self.lexmax(Q) for Q in torch.unbind(predictions_next, dim=0)], dim=0)
+
+        targets = rewards + (self.discount * next_values * (1 - dones))
+
         loss = criterion(predictions, targets).to(device)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        
+
         self.model.eval()
 
     def save_model(self, root):
@@ -128,25 +114,31 @@ class LexDQN:
     def load_model(self, root):
         self.model.load_state_dict(torch.load('{}-model.pt'.format(root)))
 
+
 ##################################################
 
 class LexActorCritic:
-    
-    
-    def __init__(self, in_size, action_size, mode, reward_size=2, second_order=False, sequential=False, network='DNN', hidden=16, is_action_cont=False, extra_input=False):
 
+    def __init__(self, in_size, action_size, mode,
+                 no_cuda, batch_size, buffer_size,
+                 reward_size=2, second_order=False, sequential=False, network='DNN',
+                 hidden=16, is_action_cont=False, extra_input=False):
+
+        self.no_cuda = no_cuda
+        self.batch_size = batch_size
+        self.buffer_size = buffer_size
         if mode != 'a2c' and mode != 'ppo':
             print("Error: mode must be \'a2c\' or \'ppo\'")
             return
         self.mode = mode
-            
-        self.t = 0                                   # total number of frames observed
-        self.discount = 0.99                         # discount
+
+        self.t = 0  # total number of frames observed
+        self.discount = 0.99  # discount
         self.reward_size = reward_size
 
         self.action_size = action_size
         self.is_action_cont = is_action_cont
-        
+
         self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont, extra_input)
         self.critic = make_network('prediction', network, in_size, hidden, reward_size, is_action_cont, extra_input)
         self.mu = [0.0 for _ in range(reward_size - 1)]
@@ -156,13 +148,13 @@ class LexActorCritic:
         # If updating the actor sequentially (one objective at a time) we need to keep track of which objective we're using
         self.i = 0 if sequential else None
 
-        self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
-        
-        #self.actor_optimizer = optim.Adam(self.actor.parameters())
-        #self.critic_optimizer = optim.Adam(self.critic.parameters())
+        self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(),1e-5)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(),lr=1e-3)
+        # self.actor_optimizer = optim.Adam(self.actor.parameters())
+        # self.critic_optimizer = optim.Adam(self.critic.parameters())
+
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), 1e-5)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
 
         # If using Adam then only the eta LR and the (relative) beta LRs matter
         self.beta = list(reversed(range(1, reward_size + 1)))
@@ -176,8 +168,8 @@ class LexActorCritic:
             self.lagrange_optimizer = [optim.Adam(ll.parameters()) for ll in self.lamb]
             self.grad_j = [0.0 for _ in range(reward_size - 1)]
             self.recent_grads = [collections.deque(maxlen=25) for i in range(reward_size - 1)]
-        
-        if (torch.cuda.is_available() and not NO_CUDA):
+
+        if (torch.cuda.is_available() and not self.no_cuda):
             self.actor.cuda()
             self.critic.cuda()
             if self.second_order:
@@ -188,63 +180,59 @@ class LexActorCritic:
         if mode == 'ppo':
             self.kl_weight = 1.0
             self.kl_target = 0.025
-        
-    
+
     def act(self, state):
         if self.is_action_cont:
             mu, var = self.actor(state)
             mu = mu.data.cpu().numpy()
-            sigma = torch.sqrt(var).data.cpu().numpy() 
+            sigma = torch.sqrt(var).data.cpu().numpy()
             action = np.random.normal(mu, sigma)
             return torch.tensor(np.clip(action, -1, 1))
         else:
             return Categorical(self.actor(state)).sample()
-        
-    
+
     def step(self, state, action, reward, next_state, done):
 
         if self.t == 0:
             self.start_state = state
-        
+
         self.t += 1
         self.memory.add(state, action, reward, next_state, done)
 
-        if self.t % BATCH_SIZE == 0:
+        if self.t % self.batch_size == 0:
             self.update(self.memory.sample(sample_all=True))
             self.memory.memory.clear()
 
-            
     def update_actor(self, experiences):
-    
+
         self.actor.train()
 
-        loss = self.compute_loss(experiences, self.i + 1) if self.i != None else self.compute_loss(experiences, self.reward_size)
-        
+        loss = self.compute_loss(experiences, self.i + 1) if self.i != None else self.compute_loss(experiences,
+                                                                                                   self.reward_size)
+
         self.actor_optimizer.zero_grad()
         loss.backward()
         self.actor_optimizer.step()
         self.actor.eval()
 
-        
     def update_critic(self, experiences):
-        
+
         states, _, rewards, next_states, dones = experiences
-    
+
         self.critic.train()
-        
+
         prediction = self.critic(states.to(device))
         with torch.no_grad():
-            target = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
-            
+            target = rewards + (self.discount * self.critic(next_states.to(device)) * (1 - dones))
+
         loss = nn.MSELoss()(prediction, target).to(device)
-        
+
         self.critic_optimizer.zero_grad()
         loss.backward()
         self.critic_optimizer.step()
-        
+
         self.critic.eval()
 
-    
     def update_lagrange(self):
 
         # Save relevant loss information for updating Lagrange parameters
@@ -257,7 +245,7 @@ class LexActorCritic:
             else:
                 # print("Converged for reward function {}!".format(self.i))
                 self.i = 0 if self.i == self.reward_size - 1 else self.i + 1
-                
+
         else:
             for i in range(self.reward_size - 1):
                 self.j[i] = -torch.tensor(self.recent_losses[i]).mean()
@@ -277,13 +265,11 @@ class LexActorCritic:
                 self.lagrange_optimizer[i].step()
                 self.lamb[i].eval()
 
-
     def update(self, experiences):
         self.update_actor(experiences)
         self.update_critic(experiences)
         self.update_lagrange()
 
-    
     def converged(self, tolerance=0.1, bound=0.01, minimum_updates=5):
 
         # If not enough updates have been performed, assume not converged
@@ -299,9 +285,8 @@ class LexActorCritic:
                 l_max = max(self.recent_losses[self.i]).float()
                 if l_max > (1.0 + tolerance) * l_mean:
                     return False
-        
-        return True
 
+        return True
 
     def get_log_probs(self, states, actions):
 
@@ -314,20 +299,20 @@ class LexActorCritic:
             dists = self.actor(states.to(device))
             log_probs = torch.log(torch.gather(dists, 1, actions))
 
-        return torch.sum(log_probs,dim=1)
-
+        return torch.sum(log_probs, dim=1)
 
     def compute_loss(self, experiences, reward_range):
 
         states, actions, rewards, next_states, dones = experiences
-        
+        loss = "Undefined"
+        second_order_weights = "Undefined"
         # Compute weights for different components of the first order objective terms
         first_order = []
         for i in range(reward_range - 1):
             if self.i != None:
                 w = self.beta[reward_range - 1] * self.mu[i]
             else:
-                w = self.beta[i] + self.mu[i] * sum([self.beta[j] for j in range(i+1,reward_range)])
+                w = self.beta[i] + self.mu[i] * sum([self.beta[j] for j in range(i + 1, reward_range)])
             first_order.append(w)
         first_order.append(self.beta[reward_range - 1])
         first_order_weights = torch.tensor(first_order)
@@ -337,7 +322,8 @@ class LexActorCritic:
             if self.i != None:
                 second_order = [self.beta[self.i] for _ in range(reward_range - 1)]
             else:
-                second_order = [sum([self.beta[j] for j in range(i+1,reward_range)]) for i in range(reward_range - 1)]
+                second_order = [sum([self.beta[j] for j in range(i + 1, reward_range)]) for i in
+                                range(reward_range - 1)]
                 second_order.append(self.beta[reward_range - 1])
             second_order_weights = torch.tensor(second_order)
 
@@ -345,54 +331,80 @@ class LexActorCritic:
         if self.mode == 'a2c':
             with torch.no_grad():
                 baseline = self.critic(states.to(device))
-                outcome  = rewards + (self.discount * self.critic(next_states.to(device))[:,0:reward_range] * (1-dones))
+                outcome = rewards + (
+                        self.discount * self.critic(next_states.to(device))[:, 0:reward_range] * (1 - dones))
                 advantage = (outcome - baseline).detach()
             log_probs = self.get_log_probs(states, actions)
-            first_order_weighted_advantages = torch.sum(first_order_weights * advantage[:,0:reward_range], dim=1).to(device)
+            first_order_weighted_advantages = torch.sum(first_order_weights * advantage[:, 0:reward_range], dim=1).to(
+                device)
             # This will be slow in Pytorch because of the lack of forward-mode differentiation
             if self.second_order:
-                scores = torch.stack(tuple([torch.cat([torch.flatten(g) for g in torch.autograd.grad(l_p.to(device), self.actor.parameters(), retain_graph=True)]) for l_p in log_probs]), dim=0).to(device)
-                second_order_weighted_advantages = torch.sum(second_order_weights * advantage[:,0:reward_range], dim=1).to(device)
-                second_order_terms = [self.lamb[i](scores.to(device)) * second_order_weighted_advantages for i in range(reward_range - 1)]
+
+                if second_order_weights == "undefined":
+                    raise Exception("second_order_weights is never defined")
+
+                scores = torch.stack(tuple([torch.cat([torch.flatten(g) for g in
+                                                       torch.autograd.grad(l_p.to(device), self.actor.parameters(),
+                                                                           retain_graph=True)]) for l_p in log_probs]),
+                                     dim=0).to(device)
+                second_order_weighted_advantages = torch.sum(second_order_weights * advantage[:, 0:reward_range],
+                                                             dim=1).to(device)
+                second_order_terms = [self.lamb[i](scores.to(device)) * second_order_weighted_advantages for i in
+                                      range(reward_range - 1)]
                 loss = -(log_probs * first_order_weighted_advantages + sum(second_order_terms)).mean().to(device)
                 for i in range(self.reward_size):
-                    self.recent_losses[i].append((log_probs * advantage[:,i]).mean())
+                    self.recent_losses[i].append((log_probs * advantage[:, i]).mean())
                     if i != self.reward_size - 1:
-                        self.recent_grads[i].append((advantage[:,i] * torch.transpose(scores,0,1)).mean(dim=1))
+                        self.recent_grads[i].append((advantage[:, i] * torch.transpose(scores, 0, 1)).mean(dim=1))
             else:
                 loss = -(log_probs * first_order_weighted_advantages).mean().to(device)
                 for i in range(self.reward_size):
-                    self.recent_losses[i].append((log_probs * advantage[:,i]).mean())
-        
+                    self.recent_losses[i].append((log_probs * advantage[:, i]).mean())
+
         # Computer PPO loss
         if self.mode == 'ppo':
             with torch.no_grad():
                 baseline = self.critic(states.to(device))
-                outcome  = rewards + (self.discount * self.critic(next_states.to(device)) * (1-dones))
+                outcome = rewards + (self.discount * self.critic(next_states.to(device)) * (1 - dones))
                 advantage = (outcome - baseline).detach()
                 old_log_probs = self.get_log_probs(states, actions).to(device)
             new_log_probs = self.get_log_probs(states, actions).to(device)
             ratios = torch.exp(new_log_probs - old_log_probs).to(device)
-            first_order_weighted_advantages = torch.sum(first_order_weights * advantage[:,0:reward_range], dim=1).to(device)
+            first_order_weighted_advantages = torch.sum(first_order_weights * advantage[:, 0:reward_range], dim=1).to(
+                device)
             kl_penalty = (new_log_probs - old_log_probs).to(device)
-            relative_kl_weights = [self.kl_weight * first_order_weights[i] / sum(first_order_weights) for i in range(reward_range)]
+            relative_kl_weights = [self.kl_weight * first_order_weights[i] / sum(first_order_weights) for i in
+                                   range(reward_range)]
             relative_kl_weights += [0.0 for _ in range(reward_range, self.reward_size)]
             # This will be slow in Pytorch because of the lack of forward-mode differentiation
             if self.second_order:
-                ratio_grads = torch.stack(tuple([torch.cat([torch.flatten(g) for g in torch.autograd.grad(r.to(device), self.actor.parameters(), retain_graph=True)]) for r in ratios]), dim=0).to(device)
-                kl_grads = torch.stack(tuple([torch.cat([torch.flatten(g) for g in torch.autograd.grad(kl.to(device), self.actor.parameters(), retain_graph=True)]) for kl in kl_penalty]), dim=0).to(device)
-                second_order_weighted_advantages = torch.sum(second_order_weights * advantage[:,0:reward_range], dim=1).to(device)
-                second_order_terms = [self.lamb[i]((ratio_grads * torch.unsqueeze(second_order_weighted_advantages, dim=1) - relative_kl_weights[i] * kl_grads).to(device)) for i in range(reward_range - 1)]
-                loss =  -(ratios * first_order_weighted_advantages - self.kl_weight * kl_penalty + sum(second_order_terms)).mean().to(device)
+                ratio_grads = torch.stack(tuple([torch.cat([torch.flatten(g) for g in
+                                                            torch.autograd.grad(r.to(device), self.actor.parameters(),
+                                                                                retain_graph=True)]) for r in ratios]),
+                                          dim=0).to(device)
+                kl_grads = torch.stack(tuple([torch.cat([torch.flatten(g) for g in
+                                                         torch.autograd.grad(kl.to(device), self.actor.parameters(),
+                                                                             retain_graph=True)]) for kl in
+                                              kl_penalty]), dim=0).to(device)
+                second_order_weighted_advantages = torch.sum(second_order_weights * advantage[:, 0:reward_range],
+                                                             dim=1).to(device)
+                second_order_terms = [self.lamb[i]((ratio_grads * torch.unsqueeze(second_order_weighted_advantages,
+                                                                                  dim=1) - relative_kl_weights[
+                                                        i] * kl_grads).to(device)) for i in range(reward_range - 1)]
+                loss = -(ratios * first_order_weighted_advantages - self.kl_weight * kl_penalty + sum(
+                    second_order_terms)).mean().to(device)
                 for i in range(self.reward_size):
-                    self.recent_losses[i].append((ratios * advantage[:,i] - relative_kl_weights[i] * kl_penalty).mean())
+                    self.recent_losses[i].append(
+                        (ratios * advantage[:, i] - relative_kl_weights[i] * kl_penalty).mean())
                     if i != self.reward_size - 1:
-                        self.recent_grads[i].append((ratio_grads * torch.unsqueeze(advantage[:,i], dim=1) - relative_kl_weights[i] * kl_grads).mean(dim=0))
+                        self.recent_grads[i].append((ratio_grads * torch.unsqueeze(advantage[:, i], dim=1) -
+                                                     relative_kl_weights[i] * kl_grads).mean(dim=0))
             else:
                 loss = -(ratios * first_order_weighted_advantages - self.kl_weight * kl_penalty).mean().to(device)
                 for i in range(self.reward_size):
-                    self.recent_losses[i].append((ratios * advantage[:,i] - relative_kl_weights[i] * kl_penalty).mean())
-                
+                    self.recent_losses[i].append(
+                        (ratios * advantage[:, i] - relative_kl_weights[i] * kl_penalty).mean())
+
                 # n = torch.tensor(float('nan'))
                 # m = torch.tensor(float('inf'))
                 # o = torch.tensor(float('-inf'))
@@ -402,7 +414,9 @@ class LexActorCritic:
                     current_time = str(time.time())
                     torch.save(self.actor.state_dict(), 'actor_nan_error_{}.pt'.format(current_time))
                     torch.save(self.critic.state_dict(), 'critic_nan_error_{}.pt'.format(current_time))
-                    current_data = {'loss':loss, 'experiences':experiences, 'ratios':ratios, 'first_order_weights':first_order_weights, 'advantage':advantage, 'kl_weight':self.kl_weight, 'kl_penalty':kl_penalty}
+                    current_data = {'loss': loss, 'experiences': experiences, 'ratios': ratios,
+                                    'first_order_weights': first_order_weights, 'advantage': advantage,
+                                    'kl_weight': self.kl_weight, 'kl_penalty': kl_penalty}
                     with open('nan_error_data_{}.pickle'.format(current_time), 'wb') as handle:
                         pickle.dump(current_data, handle)
                     return "oops"
@@ -412,7 +426,8 @@ class LexActorCritic:
                 self.kl_weight *= 0.5
             else:
                 self.kl_weight *= 2
-        
+        if loss == "undefined":
+            raise Exception("Loss is never defined")
         return loss
 
     def save_model(self, root):
@@ -423,176 +438,174 @@ class LexActorCritic:
         self.actor.load_state_dict(torch.load('{}-actor.pt'.format(root)))
         self.critic.load_state_dict(torch.load('{}-critic.pt'.format(root)))
 
+
 ##################################################
 
-class LexTabular:
-    
-    def __init__(self, action_size, reward_size=2, on_policy=False, initialisation=10, double=False):
-        
-        self.actions = list(range(action_size))
-        if not double:
-            self.Q = [{} for _ in range(reward_size)]
-        else:
-            self.Qa = [{} for _ in range(reward_size)]
-            self.Qb = [{} for _ in range(reward_size)]
+# Untested
 
-        self.discount = 0.99
-        
-        if isinstance(initialisation, float) or isinstance(initialisation, int):
-            self.initialisation = [initialisation for _ in range(reward_size)]
-        else:
-            self.initialisation = initialisation
-
-        self.double = double
-        if double:
-            self.step = self.double_Q_update
-        elif on_policy:
-            self.step = self.SARSA_update
-        else:
-            self.step = self.Q_update 
-        
-    
-    def act(self, state):
-        
-        state = str(state)
-        self.init_state(state)
-        return self.lexicographic_epsilon_greedy(state)
-    
-
-    def init_state(self, state):
-        
-        if not self.double:
-            if not state in self.Q[0].keys(): 
-                for i, Qi in enumerate(self.Q):
-                    Qi[state] = {a:self.initialisation[i] for a in self.actions} # initialisation
-        else:
-            if not state in self.Qa[0].keys():
-                for i, Qai in enumerate(self.Qa):
-                    Qai[state] = {a:self.initialisation[i] for a in self.actions} # initialisation
-                for i, Qbi in enumerate(self.Qb):
-                    Qbi[state] = {a:self.initialisation[i] for a in self.actions} # self.initialisation
-
-    
-    def lexicographic_epsilon_greedy(self, state):
-
-        state = str(state)
-        
-        if np.random.choice([True,False], p=[EPSILON, 1-EPSILON]):
-            return np.random.choice(self.actions)
-        
-        permissible_actions = self.actions
-    
-        if not self.double:
-            for Qi in self.Q:
-                m = max([Qi[state][a] for a in permissible_actions])
-                r = SLACK
-                permissible_actions = [a for a in permissible_actions if Qi[state][a] >= m-r*abs(m)]
-        else:
-            for Qai, Qbi in zip(self.Qa, self.Qb):
-                m = max([0.5*(Qai[state][a]+Qbi[state][a]) for a in permissible_actions])
-                r = SLACK
-                permissible_actions = [a for a in permissible_actions if 0.5*(Qai[state][a]+Qbi[state][a] >= m-r*abs(m))] 
-
-        return np.random.choice(permissible_actions)
-        
-    
-    def Q_update(self, state, action, reward, next_state, done):
-
-        state = str(state)
-        next_state = str(next_state)
-        self.init_state(state)
-        self.init_state(next_state)
-        permissible_actions = self.actions
-        
-        for i, Qi in enumerate(self.Q):
-            
-            m = max([Qi[next_state][a] for a in permissible_actions])
-            r = SLACK
-            permissible_actions = [a for a in permissible_actions if Qi[next_state][a] >= m-r*abs(m)]
-            
-            alpha = 0.01
-            Qi[state][action] = (1-alpha)*Qi[state][action] + alpha*(reward[i] + self.discount*m)
-            
-            
-
-    def SARSA_update(self, state, action, reward, next_state, done):
-
-        state = str(state)
-        next_state = str(next_state)
-        permissible_actions = self.actions
-        
-        for Qi in self.Q:
-            m = max([Qi[next_state][a] for a in permissible_actions])
-            r = SLACK
-            permissible_actions = [a for a in permissible_actions if Qi[next_state][a] >= m-r*abs(m)]
-            
-        ps = []  
-        
-        for Qi in self.Q:
-            for a in self.actions:
-                if a in permissible_actions:
-                    ps.append((1-EPSILON)/len(permissible_actions) + EPSILON/len(self.actions))
-                else:
-                    ps.append(EPSILON/len(self.actions))
-        
-        for i, Qi in enumerate(self.Q):
-            exp = sum([p*Qi[next_state][a] for p,a in zip(ps, self.actions)])
-            target = reward[i] + self.discount*exp
-            alpha = 0.01
-            Qi[state][action] = (1-alpha)*Qi[state][action] + alpha*target
-            
-            
-    def double_Q_update(self, state, action, reward, next_state, done):
-
-        state = str(state)
-        next_state = str(next_state)
-        permissible_actions = self.actions
-        r = SLACK
-            
-        for i, (Qai, Qbi) in enumerate(zip(self.Qa, self.Qb)):
-            
-            if np.random.choice([True,False]):
-
-                m = max([Qbi[next_state][a] for a in permissible_actions])
-                permissible_actions = [a for a in permissible_actions if Qbi[next_state][a]  >= m-r*abs(m)]
-                
-                a = np.random.choice(permissible_actions)
-                m = Qai[next_state][a]
-                target = 0 if done else reward[i] + self.discount*m
-
-                alpha = 0.01
-                Qai[state][action] = (1-alpha)*Qai[state][action] + alpha*target
-                
-            else:
-                
-                m = max([Qai[next_state][a] for a in permissible_actions])
-                permissible_actions = [i for i in permissible_actions if Qai[next_state][i] >= m-r*abs(m)]
-                
-                a = np.random.choice(permissible_actions)
-                m = Qbi[next_state][a]
-                target = 0 if done else reward[i] + self.discount*m
-
-                alpha = 0.01
-                Qbi[state][action] = (1-alpha)*Qbi[state][action] + alpha*target          
-
-
-    def save_model(self, root):
-        if not self.double:
-            with open('{}-model.pt'.format(root), 'wb') as f:
-                pickle.dump(self.Q, f, pickle.HIGHEST_PROTOCOL)
-        else:
-            with open('{}-model-A.pt'.format(root), 'wb') as f:
-                pickle.dump(self.Qa, f, pickle.HIGHEST_PROTOCOL)
-            with open('{}-model-B.pt'.format(root), 'wb') as f:
-                pickle.dump(self.Qb, f, pickle.HIGHEST_PROTOCOL)
-
-
-    def load_model(self, root):
-        if not self.double:
-            with open('{}-model.pt'.format(root), 'rb') as f:
-                self.Q = pickle.load(f)
-        else:
-            with open('{}-model-A.pt'.format(root), 'rb') as f:
-                self.Qa = pickle.load(f)
-            with open('{}-model-B.pt'.format(root), 'rb') as f:
-                self.Qb = pickle.load(f)
+# class LexTabular:
+#
+#     def __init__(self, action_size, slack, epsilon,
+#                  reward_size=2, on_policy=False, initialisation=10, double=False):
+#
+#         self.slack = slack
+#         self.epsilon = epsilon
+#
+#         self.actions = list(range(action_size))
+#         if not double:
+#             self.Q = [{} for _ in range(reward_size)]
+#         else:
+#             self.Qa = [{} for _ in range(reward_size)]
+#             self.Qb = [{} for _ in range(reward_size)]
+#
+#         self.discount = 0.99
+#
+#         if isinstance(initialisation, float) or isinstance(initialisation, int):
+#             self.initialisation = [initialisation for _ in range(reward_size)]
+#         else:
+#             self.initialisation = initialisation
+#
+#         self.double = double
+#         if double:
+#             self.step = self.double_Q_update
+#         elif on_policy:
+#             self.step = self.SARSA_update
+#         else:
+#             self.step = self.Q_update
+#
+#     def act(self, state):
+#
+#         state = str(state)
+#         self.init_state(state)
+#         return self.lexicographic_epsilon_greedy(state)
+#
+#     def init_state(self, state):
+#
+#         if not self.double:
+#             if state not in self.Q[0].keys():
+#                 for i, Qi in enumerate(self.Q):
+#                     Qi[state] = {a: self.initialisation[i] for a in self.actions}  # initialisation
+#         else:
+#             if state not in self.Qa[0].keys():
+#                 for i, Qai in enumerate(self.Qa):
+#                     Qai[state] = {a: self.initialisation[i] for a in self.actions}  # initialisation
+#                 for i, Qbi in enumerate(self.Qb):
+#                     Qbi[state] = {a: self.initialisation[i] for a in self.actions}  # self.initialisation
+#
+#     def lexicographic_epsilon_greedy(self, state):
+#
+#         state = str(state)
+#
+#         if np.random.choice([True, False], p=[self.epsilon, 1 - self.epsilon]):
+#             return np.random.choice(self.actions)
+#
+#         permissible_actions = self.actions
+#
+#         if not self.double:
+#             for Qi in self.Q:
+#                 m = max([Qi[state][a] for a in permissible_actions])
+#                 r = self.slack
+#                 permissible_actions = [a for a in permissible_actions if Qi[state][a] >= m - r * abs(m)]
+#         else:
+#             for Qai, Qbi in zip(self.Qa, self.Qb):
+#                 m = max([0.5 * (Qai[state][a] + Qbi[state][a]) for a in permissible_actions])
+#                 r = self.slack
+#                 permissible_actions = [a for a in permissible_actions if
+#                                        0.5 * (Qai[state][a] + Qbi[state][a] >= m - r * abs(m))]
+#
+#         return np.random.choice(permissible_actions)
+#
+#     def Q_update(self, state, action, reward, next_state, done):
+#
+#         state = str(state)
+#         next_state = str(next_state)
+#         self.init_state(state)
+#         self.init_state(next_state)
+#         permissible_actions = self.actions
+#
+#         for i, Qi in enumerate(self.Q):
+#             m = max([Qi[next_state][a] for a in permissible_actions])
+#             r = self.slack
+#             permissible_actions = [a for a in permissible_actions if Qi[next_state][a] >= m - r * abs(m)]
+#
+#             alpha = 0.01
+#             Qi[state][action] = (1 - alpha) * Qi[state][action] + alpha * (reward[i] + self.discount * m)
+#
+#     def SARSA_update(self, state, action, reward, next_state, done):
+#
+#         state = str(state)
+#         next_state = str(next_state)
+#         permissible_actions = self.actions
+#
+#         for Qi in self.Q:
+#             m = max([Qi[next_state][a] for a in permissible_actions])
+#             r = self.slack
+#             permissible_actions = [a for a in permissible_actions if Qi[next_state][a] >= m - r * abs(m)]
+#
+#         ps = []
+#
+#         for Qi in self.Q:
+#             for a in self.actions:
+#                 if a in permissible_actions:
+#                     ps.append((1 - self.epsilon) / len(permissible_actions) + self.epsilon / len(self.actions))
+#                 else:
+#                     ps.append(self.epsilon / len(self.actions))
+#
+#         for i, Qi in enumerate(self.Q):
+#             exp = sum([p * Qi[next_state][a] for p, a in zip(ps, self.actions)])
+#             target = reward[i] + self.discount * exp
+#             alpha = 0.01
+#             Qi[state][action] = (1 - alpha) * Qi[state][action] + alpha * target
+#
+#     def double_Q_update(self, state, action, reward, next_state, done):
+#
+#         state = str(state)
+#         next_state = str(next_state)
+#         permissible_actions = self.actions
+#         r = self.slack
+#
+#         for i, (Qai, Qbi) in enumerate(zip(self.Qa, self.Qb)):
+#
+#             if np.random.choice([True, False]):
+#
+#                 m = max([Qbi[next_state][a] for a in permissible_actions])
+#                 permissible_actions = [a for a in permissible_actions if Qbi[next_state][a] >= m - r * abs(m)]
+#
+#                 a = np.random.choice(permissible_actions)
+#                 m = Qai[next_state][a]
+#                 target = 0 if done else reward[i] + self.discount * m
+#
+#                 alpha = 0.01
+#                 Qai[state][action] = (1 - alpha) * Qai[state][action] + alpha * target
+#
+#             else:
+#
+#                 m = max([Qai[next_state][a] for a in permissible_actions])
+#                 permissible_actions = [i for i in permissible_actions if Qai[next_state][i] >= m - r * abs(m)]
+#
+#                 a = np.random.choice(permissible_actions)
+#                 m = Qbi[next_state][a]
+#                 target = 0 if done else reward[i] + self.discount * m
+#
+#                 alpha = 0.01
+#                 Qbi[state][action] = (1 - alpha) * Qbi[state][action] + alpha * target
+#
+#     def save_model(self, root):
+#         if not self.double:
+#             with open('{}-model.pt'.format(root), 'wb') as f:
+#                 pickle.dump(self.Q, f, pickle.HIGHEST_PROTOCOL)
+#         else:
+#             with open('{}-model-A.pt'.format(root), 'wb') as f:
+#                 pickle.dump(self.Qa, f, pickle.HIGHEST_PROTOCOL)
+#             with open('{}-model-B.pt'.format(root), 'wb') as f:
+#                 pickle.dump(self.Qb, f, pickle.HIGHEST_PROTOCOL)
+#
+#     def load_model(self, root):
+#         if not self.double:
+#             with open('{}-model.pt'.format(root), 'rb') as f:
+#                 self.Q = pickle.load(f)
+#         else:
+#             with open('{}-model-A.pt'.format(root), 'rb') as f:
+#                 self.Qa = pickle.load(f)
+#             with open('{}-model-B.pt'.format(root), 'rb') as f:
+#                 self.Qb = pickle.load(f)

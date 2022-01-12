@@ -8,6 +8,10 @@ import src.constants as constants
 from src.batch_definitions import *
 
 
+class SummaryWriter:
+    pass
+
+
 def run_test_group(test_group_label: str, test_group_params: list):
     successes = []
     failures = []
@@ -15,7 +19,10 @@ def run_test_group(test_group_label: str, test_group_params: list):
     session_pref = os.path.join(constants.data_dir, test_group_label,
                                 datetime.now().strftime('%Y%m%d-%H%M%S'))
 
-    pbar = tqdm(test_group_params)
+    # Create a dummy writer to bait out tensorflow warnings before tqdm
+    SummaryWriter()
+
+    pbar = tqdm(test_group_params, colour="blue")
     for train_params in pbar:
         pbar.set_description(f"{len(successes)}S:{len(failures)}F")
         try:
@@ -27,11 +34,13 @@ def run_test_group(test_group_label: str, test_group_params: list):
 
     print(f"Final total: {len(successes)}S:{len(failures)}F")
 
-    if len(failures) > 0:
+    if len(failures) == 1:
+        print("FAILURE:")
+        print(failures[0][0])
+        raise failures[0][1]
+    elif len(failures) >= 2:
         print("FAILURES:")
-        for tps, e in failures:
-            tps.render_and_print()
-            print(e)
+        raise Exception(failures)
 
     print("Run this to see results:")
     print(f"cd ~/lmorl && source venv/bin/activate && tensorboard --logdir={session_pref}")

@@ -14,40 +14,30 @@ import torchvision.transforms as T
 from torch.distributions import Categorical
 from torch.autograd import Variable
 
-# TODO - parameterize these
-# Constants
-BUFFER_SIZE = int(1e4)
-BATCH_SIZE = 128
-UPDATE_EVERY = 4
-UPDATE_EVERY_EPS = 32
-
-EPSILON = 0.05
-SLACK = 0.04
-LAMBDA_LR_2 = 0.05
-
-NO_CUDA = True
-
 class ActorCritic:
 
     # vanilla actor-critic
 
-    def __init__(self, in_size, action_size, network='DNN', hidden=16, is_action_cont=False, extra_input=False):
+    def __init__(self, in_size, action_size, buffer_size, batch_size, no_cuda, network='DNN', hidden=16, is_action_cont=False, extra_input=False):
 
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
 
-        self.action_size = action_size
+        self.action_size: int = action_size
         self.is_action_cont = is_action_cont
+        self.batch_size: int = batch_size
+        self.buffer_size: int = buffer_size
+        self.no_cuda = no_cuda
 
         self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont, extra_input)
         self.critic = make_network('prediction', network, in_size, hidden, 1, is_action_cont, extra_input)
 
-        self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
+        self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
         self.actor_optimizer = optim.Adam(self.actor.parameters(), 1e-3)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-2)
 
-        if (torch.cuda.is_available() and not NO_CUDA):
+        if torch.cuda.is_available() and not no_cuda:
             self.actor.cuda()
             self.critic.cuda()
 
@@ -67,7 +57,7 @@ class ActorCritic:
         self.t += 1
         self.memory.add(state, action, reward, next_state, done)
 
-        if self.t % BATCH_SIZE == 0:
+        if self.t % self.batch_size == 0:
             self.update_critic(self.memory.sample(sample_all=True))
             self.update_actor(self.memory.sample(sample_all=True))
             self.memory.memory.clear()
@@ -99,7 +89,6 @@ class ActorCritic:
         self.actor_optimizer.step()
 
         self.actor.eval()
-        first_params = self.actor.parameters().__next__()
 
     def update_critic(self, experiences):
 
@@ -118,7 +107,6 @@ class ActorCritic:
         self.critic_optimizer.step()
 
         self.critic.eval()
-        first_params = self.critic.parameters().__next__()
 
     def update(self, experiences):
         self.update_actor(experiences)
@@ -139,23 +127,29 @@ class DQN:
 
     # vanilla DQN
 
-    def __init__(self, in_size, action_size, network='DNN', hidden=16, extra_input=False):
+    def __init__(self, in_size, action_size, buffer_size, batch_size, no_cuda, epsilon, update_every,
+                 network='DNN', hidden=16, extra_input=False):
 
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
 
-        self.action_size = action_size
+        self.epsilon = epsilon
+        self.update_every = update_every
+        self.batch_size: int = batch_size
+        self.buffer_size: int = buffer_size
+
+        self.action_size: int = action_size
         self.model = make_network('prediction', network, in_size, hidden, action_size, extra_input=extra_input)
 
-        self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
+        self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
         self.optimizer = optim.Adam(self.model.parameters())
 
-        if (torch.cuda.is_available() and not NO_CUDA):
+        if torch.cuda.is_available() and not no_cuda:
             self.model.cuda()
 
     def act(self, state):
 
-        if np.random.choice([True, False], p=[EPSILON, 1 - EPSILON]):
+        if np.random.choice([True, False], p=[self.epsilon, 1 - self.epsilon]):
             return random.choice(range(self.action_size))
 
         Q_vals = self.model(state)[0]
@@ -166,7 +160,7 @@ class DQN:
         self.t += 1
         self.memory.add(state, action, reward, next_state, done)
 
-        if self.t % UPDATE_EVERY == 0 and len(self.memory) > BATCH_SIZE:
+        if self.t % self.update_every == 0 and len(self.memory) > self.batch_size:
             experience = self.memory.sample()
             self.update(experience)
 
@@ -203,10 +197,12 @@ class Tabular:
 
     # tabular Q-learning
 
-    def __init__(self, action_size, initialisation=1):
+    def __init__(self, action_size, epsilon, initialisation=1):
 
         self.actions = list(range(action_size))
         self.Q = {}
+
+        self.epsilon = epsilon
 
         self.discount = 0.99
         self.initialisation = initialisation
@@ -220,7 +216,7 @@ class Tabular:
         state = str(state)
         self.init_state(state)
 
-        if np.random.choice([True, False], p=[EPSILON, 1 - EPSILON]):
+        if np.random.choice([True, False], p=[self.epsilon, 1 - self.epsilon]):
             permissible_actions = self.actions
         else:
             m = max([self.Q[state][a] for a in self.actions])
@@ -242,7 +238,7 @@ class Tabular:
         self.Q[state][action] = (1 - alpha) * self.Q[state][action] + alpha * target
 
     def init_state(self, state):
-        if not state in self.Q.keys():
+        if state not in self.Q.keys():
             self.Q[state] = {a: self.initialisation for a in self.actions}
 
     def save_model(self, root):
@@ -290,7 +286,9 @@ class AproPO:
     # Approachability-Based Policy Optimization (for compact & convex constraints)
     # https://arxiv.org/pdf/1906.09323.pdf
 
-    def __init__(self, in_size, action_size, constraints, reward_size=2,
+    def __init__(self, in_size, action_size, constraints, buffer_size, batch_size,
+                 update_every_eps, lambda_lr_2, no_cuda,
+                 reward_size=2,
                  network='DNN', hidden=16, is_action_cont=False):
 
         self.t = 0  # total number of frames observed
@@ -299,7 +297,15 @@ class AproPO:
 
         self.actions = list(range(action_size))
         self.reward_size = reward_size
-        self.action_size = action_size
+        self.action_size: int = action_size
+
+        self.action_size: int = action_size
+        self.is_action_cont = is_action_cont
+        self.batch_size: int = batch_size
+        self.buffer_size: int = buffer_size
+        self.update_every_eps = update_every_eps
+        self.lambda_lr_2 = lambda_lr_2
+        self.no_cuda = no_cuda
 
         self.constraints = constraints  # [(lower, upper),(lower, upper)...]
 
@@ -308,11 +314,17 @@ class AproPO:
         max_dist = sum([(u - l) ** reward_size for (l, u) in constraints]) ** (1.0 / reward_size)
         tolerance = 0.01
         self.kappa = max_dist / (2 * tolerance) ** 0.5
+        self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
-        self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
-
-        self.best_response_oracle = ActorCritic(in_size, action_size, network, hidden,
-                                                is_action_cont, extra_input=True)
+        self.best_response_oracle = ActorCritic(in_size=in_size,
+                                                action_size=action_size,
+                                                buffer_size=buffer_size,
+                                                batch_size=batch_size,
+                                                no_cuda=no_cuda,
+                                                network=network,
+                                                hidden=hidden,
+                                                is_action_cont=is_action_cont,
+                                                extra_input=True)
 
         # self.best_response_oracle = DQN(in_size, action_size, network, hidden, extra_input=True)
 
@@ -341,13 +353,13 @@ class AproPO:
             self.eps += 1
             self.cumulative = self.kappa
 
-            if self.eps % UPDATE_EVERY_EPS == 0 and len(self.memory) > BATCH_SIZE:
+            if self.eps % self.update_every_eps == 0 and len(self.memory) > self.batch_size:
                 experience = self.memory.sample(sample_all=True)
                 self.update(experience)
 
     def augment(self, state, kappa):
 
-        dtype = torch.cuda.FloatTensor if (torch.cuda.is_available() and not NO_CUDA) else torch.FloatTensor
+        dtype = torch.cuda.FloatTensor if (torch.cuda.is_available() and not self.no_cuda) else torch.FloatTensor
         t = torch.cat((state.flatten(), torch.tensor([kappa]).type(dtype)), 0).unsqueeze(0)
 
         return t
@@ -397,7 +409,7 @@ class AproPO:
         lamb_grad += ep_return
         lamb_grad /= eps  # dones.sum() # counts the episodes
 
-        self.lamb = self.project(self.lamb + LAMBDA_LR_2 * lamb_grad)
+        self.lamb = self.project(self.lamb + self.lambda_lr_2 * lamb_grad)
 
     def save_model(self, root):
         self.best_response_oracle.save_model(root)
@@ -413,20 +425,27 @@ class RCPO:
     # Reward-Constrained Policy Optimisation
     # https://arxiv.org/pdf/1805.11074.pdf
 
-    def __init__(self, action_size, constraint, in_size=4, network='DNN', hidden=16, is_action_cont=False):
+    def __init__(self, action_size, constraint,
+                 buffer_size, batch_size,
+                 no_cuda,
+                 in_size=4, network='DNN', hidden=16, is_action_cont=False):
 
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
         self.constraint = constraint
 
-        self.action_size = action_size
+        self.action_size: int = action_size
         self.is_action_cont = is_action_cont
 
         self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont)
         self.critic = make_network('prediction', network, in_size, hidden, 1, is_action_cont)
 
+        self.buffer_size: int = buffer_size
+        self.batch_size: int = batch_size
+        self.no_cuda = no_cuda
+
         self.lamb = random.random()
-        self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
+        self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
         self.LAMBDA_LR = 0.0001
 
@@ -436,7 +455,7 @@ class RCPO:
         # self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=0.001)
         # self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=0.001)
 
-        if (torch.cuda.is_available() and not NO_CUDA):
+        if torch.cuda.is_available() and not self.no_cuda:
             self.actor.cuda()
             self.critic.cuda()
 
@@ -457,7 +476,7 @@ class RCPO:
         self.memory.add(state, action, rewards, next_state, done)
 
         # if done:
-        if self.t % BATCH_SIZE == 0:
+        if self.t % self.batch_size == 0:
             experiences = self.memory.sample(sample_all=True)
 
             self.update_critic(experiences)
@@ -532,106 +551,17 @@ class RCPO:
 
 ##################################################
 
-class VaR_PG:
-
-    # Policy Gradient for VaR-constrained problems
-    # https://stanfordasl.github.io/wp-content/papercite-data/pdf/Chow.Ghavamzadeh.Janson.Pavone.JMLR18.pdf
-
-    def __init__(self, action_size, alpha, beta, in_size=4, network='DNN', hidden=16, is_action_cont=False):
-
-        self.t = 0  # total number of frames observed
-        self.discount = 0.99  # discount
-
-        self.alpha = alpha  # constraint
-        self.beta = beta  # tolerance
-        self.lamb = random.random()
-
-        self.LAMBDA_LR = 0.01
-
-        self.action_size = action_size
-        self.is_action_cont = is_action_cont
-
-        self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont)
-
-        self.actor_optimizer = optim.Adam(self.actor.parameters())
-
-        self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
-
-        if (torch.cuda.is_available() and not NO_CUDA):
-            self.actor.cuda()
-
-    def act(self, state):
-
-        if self.is_action_cont:
-            mu, var = self.actor(state)
-            mu = mu.data.cpu().numpy()
-            sigma = torch.sqrt(var).data.cpu().numpy()
-            action = np.random.normal(mu, sigma)
-            return torch.tensor(np.clip(action, -1, 1))
-        else:
-            return Categorical(self.actor(state)).sample()
-
-    def step(self, state, action, rewards, next_state, done):
-
-        self.t += 1
-        self.memory.add(state, action, rewards, next_state, done)
-
-        if self.t % BUFFER_SIZE == 0:
-            experiences = self.memory.sample(sample_all=True)
-
-            self.update_actor(experiences)
-            self.update_lagrange(experiences)
-
-            self.memory.memory.clear()
-
-    def update_actor(self, experiences):
-
-        states, actions, rewards, next_states, dones = experiences
-
-        reward = sum(rewards[:, 0])
-        cost = 1 if sum(rewards[:, 1]) > self.alpha else 0
-
-        self.actor.train()
-
-        if self.is_action_cont:
-            means, variances = self.actor(states.to(device))
-            p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-5))
-            p2 = - torch.log(torch.sqrt(2 * math.pi * variances))
-            log_probs = p1 + p2
-        else:
-            dists = self.actor(states.to(device))
-            log_probs = torch.log(torch.gather(dists, 1, actions))
-
-        loss = -(log_probs * (reward + self.lamb * cost)).mean()
-
-        self.actor_optimizer.zero_grad()
-        loss.backward()
-        self.actor_optimizer.step()
-
-        self.actor.eval()
-
-    def update_lagrange(self, experiences):
-
-        states, _, rewards, next_states, dones = experiences
-        cost = 1 if sum(rewards[:, 1]) > self.alpha else 0
-        self.lamb += self.LAMBDA_LR * (cost - self.beta)
-        self.lamb = max(self.lamb, 0)
-
-    def save_model(self, root):
-        torch.save(self.actor.state_dict(), '{}-actor.pt'.format(root))
-
-    def load_model(self, root):
-        self.actor.load_state_dict(torch.load('{}-actor.pt'.format(root)))
-
-
-##################################################
-
 class VaR_AC:
 
     # Policy Gradient for VaR-constrained problems
     # https://stanfordasl.github.io/wp-content/papercite-data/pdf/Chow.Ghavamzadeh.Janson.Pavone.JMLR18.pdf
 
-    def __init__(self, action_size, alpha, beta, in_size=4, network='DNN', hidden=16, is_action_cont=False):
+    def __init__(self, action_size, alpha, beta, buffer_size, batch_size, no_cuda,
+                 in_size, network='DNN', hidden=16, is_action_cont=False):
+
+        self.batch_size: int = batch_size
+        self.buffer_size: int = buffer_size
+        self.no_cuda = no_cuda
 
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
@@ -643,7 +573,7 @@ class VaR_AC:
 
         self.cumulative_cost = 0
 
-        self.action_size = action_size
+        self.action_size: int = action_size
         self.is_action_cont = is_action_cont
 
         self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont, extra_input=True)
@@ -651,7 +581,7 @@ class VaR_AC:
 
         self.lamb = random.random()
 
-        self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
+        self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
         # self.actor_optimizer = optim.Adam(self.actor.parameters())
         # self.critic_optimizer = optim.Adam(self.critic.parameters())
@@ -659,7 +589,7 @@ class VaR_AC:
         self.actor_optimizer = optim.Adam(self.actor.parameters(), 1e-5)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
 
-        if (torch.cuda.is_available() and not NO_CUDA):
+        if torch.cuda.is_available() and not self.no_cuda:
             self.actor.cuda()
             self.critic.cuda()
 
@@ -678,7 +608,7 @@ class VaR_AC:
 
     def augment(self, state, cost):
 
-        dtype = torch.cuda.FloatTensor if (torch.cuda.is_available() and not NO_CUDA) else torch.FloatTensor
+        dtype = torch.cuda.FloatTensor if (torch.cuda.is_available() and not self.no_cuda) else torch.FloatTensor
         t = torch.cat((state.flatten(), torch.tensor([cost]).type(dtype)), 0).unsqueeze(0)
 
         return t
@@ -770,3 +700,99 @@ class VaR_AC:
     def load_model(self, root):
         self.actor.load_state_dict(torch.load('{}-actor.pt'.format(root)))
         self.critic.load_state_dict(torch.load('{}-critic.pt'.format(root)))
+
+
+##################################################
+
+# Currently untested
+
+# class VaR_PG:
+#
+#     # Policy Gradient for VaR-constrained problems
+#     # https://stanfordasl.github.io/wp-content/papercite-data/pdf/Chow.Ghavamzadeh.Janson.Pavone.JMLR18.pdf
+#
+#     def __init__(self, action_size, alpha, beta, in_size=4, network='DNN', hidden=16, is_action_cont=False):
+#
+#         self.t = 0  # total number of frames observed
+#         self.discount = 0.99  # discount
+#
+#         self.alpha = alpha  # constraint
+#         self.beta = beta  # tolerance
+#         self.lamb = random.random()
+#
+#         self.LAMBDA_LR = 0.01
+#
+#         self.action_size: int = action_size
+#         self.is_action_cont = is_action_cont
+#
+#         self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont)
+#
+#         self.actor_optimizer = optim.Adam(self.actor.parameters())
+#
+#         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
+#
+#         if torch.cuda.is_available() and not self.no_cuda:
+#             self.actor.cuda()
+#
+#     def act(self, state):
+#
+#         if self.is_action_cont:
+#             mu, var = self.actor(state)
+#             mu = mu.data.cpu().numpy()
+#             sigma = torch.sqrt(var).data.cpu().numpy()
+#             action = np.random.normal(mu, sigma)
+#             return torch.tensor(np.clip(action, -1, 1))
+#         else:
+#             return Categorical(self.actor(state)).sample()
+#
+#     def step(self, state, action, rewards, next_state, done):
+#
+#         self.t += 1
+#         self.memory.add(state, action, rewards, next_state, done)
+#
+#         if self.t % self.buffer_size == 0:
+#             experiences = self.memory.sample(sample_all=True)
+#
+#             self.update_actor(experiences)
+#             self.update_lagrange(experiences)
+#
+#             self.memory.memory.clear()
+#
+#     def update_actor(self, experiences):
+#
+#         states, actions, rewards, next_states, dones = experiences
+#
+#         reward = sum(rewards[:, 0])
+#         cost = 1 if sum(rewards[:, 1]) > self.alpha else 0
+#
+#         self.actor.train()
+#
+#         if self.is_action_cont:
+#             means, variances = self.actor(states.to(device))
+#             p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-5))
+#             p2 = - torch.log(torch.sqrt(2 * math.pi * variances))
+#             log_probs = p1 + p2
+#         else:
+#             dists = self.actor(states.to(device))
+#             log_probs = torch.log(torch.gather(dists, 1, actions))
+#
+#         loss = -(log_probs * (reward + self.lamb * cost)).mean()
+#
+#         self.actor_optimizer.zero_grad()
+#         loss.backward()
+#         self.actor_optimizer.step()
+#
+#         self.actor.eval()
+#
+#     def update_lagrange(self, experiences):
+#
+#         states, _, rewards, next_states, dones = experiences
+#         cost = 1 if sum(rewards[:, 1]) > self.alpha else 0
+#         self.lamb += self.LAMBDA_LR * (cost - self.beta)
+#         self.lamb = max(self.lamb, 0)
+#
+#     def save_model(self, root):
+#         torch.save(self.actor.state_dict(), '{}-actor.pt'.format(root))
+#
+#     def load_model(self, root):
+#         self.actor.load_state_dict(torch.load('{}-actor.pt'.format(root)))
