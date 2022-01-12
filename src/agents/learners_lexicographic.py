@@ -85,6 +85,7 @@ class LexDQN:
             experience = self.memory.sample()
             for _ in range(self.update_steps):
                 self.update(experience)
+
     def update(self, experiences):
 
         states, actions, rewards, next_states, dones = experiences
