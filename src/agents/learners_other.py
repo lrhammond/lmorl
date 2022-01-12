@@ -1,5 +1,5 @@
 # Other learning algorithms that we evaluate against
-
+from src.TrainingParameters import TrainingParameters
 from src.agents.networks import *
 
 import math, random, pickle
@@ -14,7 +14,7 @@ class ActorCritic:
 
     # vanilla actor-critic
 
-    def __init__(self, train_params, in_size, action_size, is_action_cont, hidden, extra_input=False):
+    def __init__(self, train_params: TrainingParameters, in_size, action_size, is_action_cont, hidden, extra_input=False):
 
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
@@ -31,8 +31,8 @@ class ActorCritic:
 
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), 1e-3)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-2)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=0.01*train_params.learning_rate)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=train_params.learning_rate)
 
         if torch.cuda.is_available() and not self.no_cuda:
             self.actor.cuda()
@@ -124,8 +124,8 @@ class DQN:
     # vanilla DQN
     # TODO - check why is_action_cont isnt used here
 
-    def __init__(self, train_params, in_size, action_size, hidden, extra_input=False):
-
+    def __init__(self, train_params, in_size, action_size, hidden, is_action_cont, extra_input=False):
+        assert(not is_action_cont)
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
 
@@ -138,7 +138,7 @@ class DQN:
         self.model = make_network('prediction', train_params.network, in_size, hidden, action_size, extra_input=extra_input)
 
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
-        self.optimizer = optim.Adam(self.model.parameters())
+        self.optimizer = optim.Adam(self.model.parameters(), lr=train_params.learning_rate)
 
         if torch.cuda.is_available() and not train_params.no_cuda:
             self.model.cuda()
@@ -169,7 +169,10 @@ class DQN:
         predictions = self.model(states.to(device)).gather(1, actions)
 
         with torch.no_grad():
-            predictions_next = self.model(next_states).detach().max(1)[0].unsqueeze(1)
+            predictions_next = self.model(next_states).detach()
+            predictions_next = torch.stack([max(Q) for Q in torch.unbind(predictions_next, dim=0)], dim=0)
+            predictions_next = predictions_next.reshape(-1, 1)
+            # predictions_next = self.model(next_states).detach().max(1)[0].unsqueeze(1)
 
         targets = rewards + (self.discount * predictions_next * (1 - dones))
 
@@ -199,6 +202,7 @@ class Tabular:
         self.Q = {}
 
         self.epsilon: float = train_params.epsilon
+        self.alpha: float = train_params.learning_rate  # Legit
 
         self.discount = 0.99
         self.initialisation = initialisation
@@ -230,8 +234,7 @@ class Tabular:
 
         target = reward + self.discount * max([self.Q[next_state][a] for a in self.actions]) * (1 - done)
 
-        alpha = 0.01
-        self.Q[state][action] = (1 - alpha) * self.Q[state][action] + alpha * target
+        self.Q[state][action] = (1 - self.alpha) * self.Q[state][action] + self.alpha * target
 
     def init_state(self, state):
         if state not in self.Q.keys():
@@ -308,7 +311,6 @@ class AproPO:
         self.kappa = max_dist / (2 * tolerance) ** 0.5
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
-        # TODO - fix me
         self.best_response_oracle = ActorCritic(train_params,
                                                 in_size=in_size,
                                                 action_size=action_size,
@@ -435,10 +437,10 @@ class RCPO:
         self.lamb = random.random()
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
-        self.LAMBDA_LR = 0.0001
+        self.LAMBDA_LR = 0.1*train_params.learning_rate
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), 1e-5)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=0.01*train_params.learning_rate)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=train_params.learning_rate)
 
         # self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=0.001)
         # self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=0.001)
@@ -550,11 +552,12 @@ class VaR_AC:
         self.buffer_size: int = train_params.buffer_size
         self.no_cuda: bool = train_params.no_cuda
 
-        # TODO - consider moving these to train_params
         self.t = 0  # total number of frames observed
-        self.discount = 0.99  # discount
-        self.LAMBDA_LR = 0.01
         self.cumulative_cost = 0
+
+        # TODO - consider moving these to train_params
+        self.discount = 0.99  # discount
+        self.LAMBDA_LR = train_params.learning_rate
 
         self.alpha: float = train_params.alpha  # constraint
         self.beta: float = train_params.beta  # tolerance
@@ -570,11 +573,8 @@ class VaR_AC:
 
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
-        # self.actor_optimizer = optim.Adam(self.actor.parameters())
-        # self.critic_optimizer = optim.Adam(self.critic.parameters())
-
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), 1e-5)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=0.01*train_params.learning_rate)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=train_params.learning_rate)
 
         if torch.cuda.is_available() and not self.no_cuda:
             self.actor.cuda()

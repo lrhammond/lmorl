@@ -12,6 +12,7 @@ def make_agent(agent_name: str,
 
     assert (agent_name in disc_agent_names)
 
+    # AC = A2C here - e.g. this is Advantage Actor Critic
     if agent_name == 'AC':
         agent = ActorCritic(train_params=train_params,
                             action_size=env.action_size,
@@ -24,7 +25,8 @@ def make_agent(agent_name: str,
         agent = DQN(train_params=train_params,
                     action_size=env.action_size,
                     in_size=env.state_repr_size,
-                    hidden=env.rec_hid_width)
+                    hidden=env.rec_hid_width,
+                    is_action_cont=env.is_action_cont)
         mode = 1
 
     elif agent_name == 'LDQN':

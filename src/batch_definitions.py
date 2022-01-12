@@ -9,7 +9,7 @@ batch_definitions = {
             TrainingParameters(
                 agent_name=agent_name,
                 env_name=env_name,
-                num_interacts=-1,
+                num_interacts=2,
                 test_group_label="exit_tests")
 
             for agent_name in disc_agent_names for env_name in env_names
@@ -45,6 +45,17 @@ batch_definitions = {
         for agent_name in disc_agent_names for env_name in ["Bandit"]
     ],
 
+    "learn_tests_bandit_short_reward_size_1": [
+        TrainingParameters(
+            agent_name=agent_name,
+            env_name=env_name,
+            num_interacts=int(1e4),
+            test_group_label="learn_tests",
+            reward_size=1) # TODO change mode thingy
+
+        for agent_name in disc_agent_names for env_name in ["Bandit"]
+    ],
+
     "learn_tests_bandit_long": [
         TrainingParameters(
             agent_name=agent_name,
@@ -65,37 +76,14 @@ batch_definitions = {
         for agent_name in ["tabular"] for env_name in ["Bandit"]
     ],
 
-    # BUFFER_SIZE = int(1e5)
-    # BATCH_SIZE = 8
-    # UPDATE_EVERY = 8
-    # UPDATE_EVERY_EPS = 1
-    #
-    # EPSILON = 0.05
-    # SLACK = 0.04
-    # LAMBDA_LR_2 = 0.05
-    #
-    # LR = 1e-3
-    #
-    # update_steps = 10
-    #
-    # network size: 4 x 32 x 32 x 2
-    # max_ep_length = 300
-
-    "CartSafe_LDQN": [
+    "recreating_fig2_CartSafe_short": [
         TrainingParameters(
-            agent_name="LDQN",
-            env_name="CartSafe",
-            num_interacts=1000000,
-            test_group_label="CartSafe AC",
-            buffer_size=int(1e5),
-            batch_size=8,
-            update_every=8,
-            # update_every_eps=1 # Does nothing
-            slack=0.04,
-            reward_size=2
-        )
+            agent_name=agent_name,
+            env_name=env_name,
+            num_interacts=int(2e5),
+            test_group_label="recreating_fig2_CartSafe_short")
 
-        for i in range(0,10)
+        for agent_name in disc_agent_names for env_name in ["CartSafe"]
     ],
 
 }

@@ -37,6 +37,7 @@ class CartSafe(Env):
     rec_ep_length = 300
     rec_tabular_q_init = 300
     rec_episodes = 40000
+    rec_interacts = int(1e5)
 
     def __init__(self):
         self.env = gym.make('CartSafe-v0')
@@ -71,6 +72,7 @@ class GridNav(Env):
     rec_ep_length = 50
     rec_tabular_q_init = 300
     rec_episodes = 20000
+    rec_interacts = int(1e5)
 
     def __init__(self, seed=42):
         self.env = gym.make('GridNav-v0')
@@ -101,6 +103,7 @@ class ThreeArmedBandit(Env):
     rec_ep_length = 100
     rec_tabular_q_init = 100
     rec_episodes = 1000
+    rec_interacts = int(1e4)
 
     def __init__(self):
         # We randomly generate the means of the payoffs

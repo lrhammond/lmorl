@@ -19,6 +19,7 @@ class LexDQN:
     # lexicographic DQN
 
     def __init__(self, train_params, in_size, action_size, hidden):
+        self.update_steps = train_params.update_steps
         self.epsilon = train_params.epsilon
         self.buffer_size = train_params.buffer_size
         self.batch_size = train_params.batch_size
@@ -45,8 +46,7 @@ class LexDQN:
             assert False
 
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
-        # TODO - add learning rate to params?
-        self.optimizer = optim.Adam(self.model.parameters())
+        self.optimizer = optim.Adam(self.model.parameters(), lr=train_params.learning_rate)
 
         if torch.cuda.is_available() and not self.no_cuda:
             self.model.cuda()
@@ -83,8 +83,8 @@ class LexDQN:
 
         if self.t % self.update_every == 0 and len(self.memory) > self.batch_size:
             experience = self.memory.sample()
-            self.update(experience)
-
+            for _ in range(self.update_steps):
+                self.update(experience)
     def update(self, experiences):
 
         states, actions, rewards, next_states, dones = experiences
@@ -156,8 +156,8 @@ class LexActorCritic:
         # self.actor_optimizer = optim.Adam(self.actor.parameters())
         # self.critic_optimizer = optim.Adam(self.critic.parameters())
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), 1e-5)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=train_params.learning_rate * 0.01)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=train_params.learning_rate)
 
         # If using Adam then only the eta LR and the (relative) beta LRs matter
         self.beta = list(reversed(range(1, self.reward_size + 1)))

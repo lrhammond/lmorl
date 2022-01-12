@@ -9,8 +9,9 @@ parameters_used_by_all_agents = ["env_name", "agent_name", "num_episodes", "num_
                                  "test_group_label", "save_every_n"]
 
 inconsistent_parameters = {
-    "LDQN" : ["epsilon", "buffer_size", "no_cuda", "update_every", "slack", "reward_size", "network"]
+    "LDQN": ["epsilon", "buffer_size", "no_cuda", "update_every", "slack", "reward_size", "network"]
 }
+
 
 @dataclass
 class TrainingParameters:
@@ -27,17 +28,22 @@ class TrainingParameters:
     save_every_n: int = None
 
     buffer_size: int = int(1e4)
-    batch_size: int = 128
+    batch_size: int = 4
     update_every: int = 4
-    update_every_eps = 32
+    update_every_eps = 1
+    update_steps: int = 10
 
     epsilon: float = 0.05
-    slack: float = 0.05
+    slack: float = 0.001
+
+    learning_rate: float = 1e-3
+
+    # AproPo
     lambda_lr_2: float = 0.05
     alpha: float = 1
     beta: float = 0.95
 
-    no_cuda = True
+    no_cuda: bool = True
 
     reward_size: int = 2
     constraint: int = 0.1

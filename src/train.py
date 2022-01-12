@@ -55,7 +55,7 @@ class InteractIter:
 
 def train_from_params(train_params: TrainingParameters,
                       session_pref: str,
-                      show_ep_prog_bar=True):
+                      show_prog_bar=True):
     device = torch.device("cpu")
 
     env = get_env_by_name(train_params.env_name)
@@ -76,6 +76,8 @@ def train_from_params(train_params: TrainingParameters,
 
     if train_params.num_episodes == -1:
         train_params.num_episodes = env.rec_episodes
+    if train_params.num_interacts == -1:
+        train_params.num_interacts = env.rec_interacts
 
     max_ep_length = env.rec_ep_length
 
@@ -83,7 +85,9 @@ def train_from_params(train_params: TrainingParameters,
     state = np.expand_dims(state, axis=0)
     state = torch.tensor(state).float().to(device)
 
-    interact_iter = tqdm(range(train_params.num_interacts), colour="green", desc="Interacts")
+    interact_iter = range(train_params.num_interacts)
+    if show_prog_bar:
+        interact_iter = tqdm(interact_iter, colour="green", desc="Interacts")
     interacts_this_ep = 0
     for i in interact_iter:
 
