@@ -1,6 +1,6 @@
 # Our (lexicographic) learning algorithms
 
-from src.networks import *
+from src.agents.networks import *
 
 import math
 import random
@@ -18,33 +18,34 @@ class LexDQN:
 
     # lexicographic DQN
 
-    def __init__(self, in_size, action_size, buffer_size, batch_size, no_cuda,
-                 update_every, slack, epsilon,
-                 reward_size=2, network='DNN', hidden=16):
-        self.epsilon = epsilon
-        self.buffer_size = buffer_size
-        self.batch_size = batch_size
-        self.no_cuda = no_cuda
-        self.update_every = update_every
-        self.slack = slack
+    def __init__(self, train_params, in_size, action_size, hidden):
+        self.epsilon = train_params.epsilon
+        self.buffer_size = train_params.buffer_size
+        self.batch_size = train_params.batch_size
+        self.no_cuda = train_params.no_cuda
+        self.update_every = train_params.update_every
+        self.slack = train_params.slack
+        self.reward_size = train_params.reward_size
+        self.network = train_params.network
+
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
 
         self.actions = list(range(action_size))
-        self.reward_size = reward_size
         self.action_size = action_size
 
-        if network == 'DNN':
-            self.model = DNN(in_size, (reward_size, action_size), hidden)
-        elif network == 'CNN':
+        if self.network == 'DNN':
+            self.model = DNN(in_size, (self.reward_size, action_size), hidden)
+        elif self.network == 'CNN':
             self.model = CNN(int((in_size / 3) ** 0.5), channels=3,
-                             out_size=(reward_size, action_size),
+                             out_size=(self.reward_size, action_size),
                              convs=hidden, hidden=hidden)
         else:
             print('invalid network specification')
             assert False
 
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
+        # TODO - add learning rate to params?
         self.optimizer = optim.Adam(self.model.parameters())
 
         if torch.cuda.is_available() and not self.no_cuda:
@@ -119,31 +120,33 @@ class LexDQN:
 
 class LexActorCritic:
 
-    def __init__(self, in_size, action_size, mode,
-                 no_cuda, batch_size, buffer_size,
-                 reward_size=2, second_order=False, sequential=False, network='DNN',
-                 hidden=16, is_action_cont=False, extra_input=False):
+    def __init__(self, train_params, in_size, action_size, mode, is_action_cont,
+                 second_order, sequential, extra_input, hidden):
 
-        self.no_cuda = no_cuda
-        self.batch_size = batch_size
-        self.buffer_size = buffer_size
+        self.no_cuda = train_params.no_cuda
+        self.batch_size = train_params.batch_size
+        self.buffer_size = train_params.buffer_size
+        self.network = train_params.network
+        self.reward_size = train_params.reward_size
+
+        self.action_size = action_size
+        self.mode = mode
+        self.is_action_cont = is_action_cont
+
         if mode != 'a2c' and mode != 'ppo':
             print("Error: mode must be \'a2c\' or \'ppo\'")
             return
-        self.mode = mode
 
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
-        self.reward_size = reward_size
 
-        self.action_size = action_size
-        self.is_action_cont = is_action_cont
-
-        self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont, extra_input)
-        self.critic = make_network('prediction', network, in_size, hidden, reward_size, is_action_cont, extra_input)
-        self.mu = [0.0 for _ in range(reward_size - 1)]
-        self.j = [0.0 for _ in range(reward_size - 1)]
-        self.recent_losses = [collections.deque(maxlen=25) for i in range(reward_size)]
+        self.actor = make_network('policy', self.network, in_size, hidden, self.action_size, is_action_cont,
+                                  extra_input)
+        self.critic = make_network('prediction', self.network, in_size, hidden, self.reward_size, is_action_cont,
+                                   extra_input)
+        self.mu = [0.0 for _ in range(self.reward_size - 1)]
+        self.j = [0.0 for _ in range(self.reward_size - 1)]
+        self.recent_losses = [collections.deque(maxlen=25) for i in range(self.reward_size)]
 
         # If updating the actor sequentially (one objective at a time) we need to keep track of which objective we're using
         self.i = 0 if sequential else None
@@ -157,17 +160,17 @@ class LexActorCritic:
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
 
         # If using Adam then only the eta LR and the (relative) beta LRs matter
-        self.beta = list(reversed(range(1, reward_size + 1)))
-        self.eta = [1e-3 * eta for eta in list(reversed(range(1, reward_size + 1)))]
+        self.beta = list(reversed(range(1, self.reward_size + 1)))
+        self.eta = [1e-3 * eta for eta in list(reversed(range(1, self.reward_size + 1)))]
 
         # If using second order terms
         self.second_order = second_order
         if self.second_order:
             actor_params = filter(lambda p: p.requires_grad, self.actor.parameters())
-            self.lamb = [LagrangeLambda(tuple([p.shape for p in actor_params])) for _ in range(reward_size - 1)]
+            self.lamb = [LagrangeLambda(tuple([p.shape for p in actor_params])) for _ in range(self.reward_size - 1)]
             self.lagrange_optimizer = [optim.Adam(ll.parameters()) for ll in self.lamb]
-            self.grad_j = [0.0 for _ in range(reward_size - 1)]
-            self.recent_grads = [collections.deque(maxlen=25) for i in range(reward_size - 1)]
+            self.grad_j = [0.0 for _ in range(self.reward_size - 1)]
+            self.recent_grads = [collections.deque(maxlen=25) for i in range(self.reward_size - 1)]
 
         if (torch.cuda.is_available() and not self.no_cuda):
             self.actor.cuda()
@@ -437,7 +440,6 @@ class LexActorCritic:
     def load_model(self, root):
         self.actor.load_state_dict(torch.load('{}-actor.pt'.format(root)))
         self.critic.load_state_dict(torch.load('{}-critic.pt'.format(root)))
-
 
 ##################################################
 

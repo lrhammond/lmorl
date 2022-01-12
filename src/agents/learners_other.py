@@ -1,43 +1,40 @@
 # Other learning algorithms that we evaluate against
 
-import numpy as np
-
-from src.networks import *
+from src.agents.networks import *
 
 import math, random, pickle
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
 from torch.distributions import Categorical
-from torch.autograd import Variable
+
 
 class ActorCritic:
 
     # vanilla actor-critic
 
-    def __init__(self, in_size, action_size, buffer_size, batch_size, no_cuda, network='DNN', hidden=16, is_action_cont=False, extra_input=False):
+    def __init__(self, train_params, in_size, action_size, is_action_cont, hidden, extra_input=False):
 
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
-
         self.action_size: int = action_size
-        self.is_action_cont = is_action_cont
-        self.batch_size: int = batch_size
-        self.buffer_size: int = buffer_size
-        self.no_cuda = no_cuda
+        self.is_action_cont: bool = is_action_cont
 
-        self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont, extra_input)
-        self.critic = make_network('prediction', network, in_size, hidden, 1, is_action_cont, extra_input)
+        self.batch_size: int = train_params.batch_size
+        self.buffer_size: int = train_params.buffer_size
+        self.no_cuda: bool = train_params.no_cuda
+        self.network: str = train_params.network
+
+        self.actor = make_network('policy', self.network, in_size, hidden, action_size, self.is_action_cont, extra_input)
+        self.critic = make_network('prediction', self.network, in_size, hidden, 1, self.is_action_cont, extra_input)
 
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
         self.actor_optimizer = optim.Adam(self.actor.parameters(), 1e-3)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-2)
 
-        if torch.cuda.is_available() and not no_cuda:
+        if torch.cuda.is_available() and not self.no_cuda:
             self.actor.cuda()
             self.critic.cuda()
 
@@ -122,29 +119,28 @@ class ActorCritic:
 
 
 ##################################################
-
 class DQN:
 
     # vanilla DQN
+    # TODO - check why is_action_cont isnt used here
 
-    def __init__(self, in_size, action_size, buffer_size, batch_size, no_cuda, epsilon, update_every,
-                 network='DNN', hidden=16, extra_input=False):
+    def __init__(self, train_params, in_size, action_size, hidden, extra_input=False):
 
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
 
-        self.epsilon = epsilon
-        self.update_every = update_every
-        self.batch_size: int = batch_size
-        self.buffer_size: int = buffer_size
+        self.epsilon: float = train_params.epsilon
+        self.update_every: int = train_params.update_every
+        self.batch_size: int = train_params.batch_size
+        self.buffer_size: int = train_params.buffer_size
 
         self.action_size: int = action_size
-        self.model = make_network('prediction', network, in_size, hidden, action_size, extra_input=extra_input)
+        self.model = make_network('prediction', train_params.network, in_size, hidden, action_size, extra_input=extra_input)
 
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
         self.optimizer = optim.Adam(self.model.parameters())
 
-        if torch.cuda.is_available() and not no_cuda:
+        if torch.cuda.is_available() and not train_params.no_cuda:
             self.model.cuda()
 
     def act(self, state):
@@ -197,12 +193,12 @@ class Tabular:
 
     # tabular Q-learning
 
-    def __init__(self, action_size, epsilon, initialisation=1):
+    def __init__(self, train_params, action_size, initialisation=1):
 
         self.actions = list(range(action_size))
         self.Q = {}
 
-        self.epsilon = epsilon
+        self.epsilon: float = train_params.epsilon
 
         self.discount = 0.99
         self.initialisation = initialisation
@@ -256,9 +252,9 @@ class RandomAgent:
 
     # this agent selects actions uniformly at random
 
-    def __init__(self, action_size, is_action_cont=False):
-        self.is_action_cont = is_action_cont
-        if is_action_cont:
+    def __init__(self, train_params, action_size, is_action_cont):
+        self.is_action_cont: bool = is_action_cont
+        if self.is_action_cont:
             self.number_of_actions = action_size
         else:
             self.actions = list(range(action_size))
@@ -286,49 +282,43 @@ class AproPO:
     # Approachability-Based Policy Optimization (for compact & convex constraints)
     # https://arxiv.org/pdf/1906.09323.pdf
 
-    def __init__(self, in_size, action_size, constraints, buffer_size, batch_size,
-                 update_every_eps, lambda_lr_2, no_cuda,
-                 reward_size=2,
-                 network='DNN', hidden=16, is_action_cont=False):
+    def __init__(self, train_params, in_size, action_size, hidden, is_action_cont):
 
         self.t = 0  # total number of frames observed
         self.eps = 0  # total number of episodes completed
         self.discount = 0.99  # discount
 
         self.actions = list(range(action_size))
-        self.reward_size = reward_size
+        self.reward_size: int = train_params.reward_size
         self.action_size: int = action_size
 
-        self.action_size: int = action_size
-        self.is_action_cont = is_action_cont
-        self.batch_size: int = batch_size
-        self.buffer_size: int = buffer_size
-        self.update_every_eps = update_every_eps
-        self.lambda_lr_2 = lambda_lr_2
-        self.no_cuda = no_cuda
+        self.is_action_cont: bool = is_action_cont
+        self.batch_size: int = train_params.batch_size
+        self.buffer_size: int = train_params.buffer_size
+        self.update_every_eps = train_params.update_every_eps
+        self.lambda_lr_2 = train_params.lambda_lr_2
+        self.no_cuda: bool = train_params.no_cuda
 
-        self.constraints = constraints  # [(lower, upper),(lower, upper)...]
+        self.constraints = train_params.constraints  # [(lower, upper),(lower, upper)...]
 
         # can be generalised to arbitrary compact & convex constraints by amending max_dist below
         # and also the projection function
-        max_dist = sum([(u - l) ** reward_size for (l, u) in constraints]) ** (1.0 / reward_size)
+        max_dist = sum([(u - l) ** self.reward_size for (l, u) in self.constraints]) ** (1.0 / self.reward_size)
         tolerance = 0.01
         self.kappa = max_dist / (2 * tolerance) ** 0.5
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
-        self.best_response_oracle = ActorCritic(in_size=in_size,
+        # TODO - fix me
+        self.best_response_oracle = ActorCritic(train_params,
+                                                in_size=in_size,
                                                 action_size=action_size,
-                                                buffer_size=buffer_size,
-                                                batch_size=batch_size,
-                                                no_cuda=no_cuda,
-                                                network=network,
                                                 hidden=hidden,
                                                 is_action_cont=is_action_cont,
                                                 extra_input=True)
 
         # self.best_response_oracle = DQN(in_size, action_size, network, hidden, extra_input=True)
 
-        self.lamb = np.asarray([random.random() for _ in range(reward_size)])
+        self.lamb = np.asarray([random.random() for _ in range(self.reward_size)])
         self.cumulative = self.kappa
 
     def act(self, state):
@@ -425,24 +415,22 @@ class RCPO:
     # Reward-Constrained Policy Optimisation
     # https://arxiv.org/pdf/1805.11074.pdf
 
-    def __init__(self, action_size, constraint,
-                 buffer_size, batch_size,
-                 no_cuda,
-                 in_size=4, network='DNN', hidden=16, is_action_cont=False):
+    def __init__(self, train_params, action_size, in_size, hidden, is_action_cont):
 
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
-        self.constraint = constraint
+        self.constraint = train_params.constraint
 
         self.action_size: int = action_size
-        self.is_action_cont = is_action_cont
+        self.is_action_cont: bool = is_action_cont
 
-        self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont)
-        self.critic = make_network('prediction', network, in_size, hidden, 1, is_action_cont)
+        self.actor = make_network('policy', train_params.network, in_size, hidden, action_size, self.is_action_cont)
+        self.critic = make_network('prediction', train_params.network, in_size, hidden, 1, self.is_action_cont)
 
-        self.buffer_size: int = buffer_size
-        self.batch_size: int = batch_size
-        self.no_cuda = no_cuda
+        self.buffer_size: int = train_params.buffer_size
+
+        self.batch_size: int = train_params.batch_size
+        self.no_cuda: bool = train_params.no_cuda
 
         self.lamb = random.random()
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
@@ -556,28 +544,27 @@ class VaR_AC:
     # Policy Gradient for VaR-constrained problems
     # https://stanfordasl.github.io/wp-content/papercite-data/pdf/Chow.Ghavamzadeh.Janson.Pavone.JMLR18.pdf
 
-    def __init__(self, action_size, alpha, beta, buffer_size, batch_size, no_cuda,
-                 in_size, network='DNN', hidden=16, is_action_cont=False):
+    def __init__(self, train_params, action_size, in_size, hidden, is_action_cont):
 
-        self.batch_size: int = batch_size
-        self.buffer_size: int = buffer_size
-        self.no_cuda = no_cuda
+        self.batch_size: int = train_params.batch_size
+        self.buffer_size: int = train_params.buffer_size
+        self.no_cuda: bool = train_params.no_cuda
 
+        # TODO - consider moving these to train_params
         self.t = 0  # total number of frames observed
         self.discount = 0.99  # discount
-
-        self.alpha = alpha  # constraint
-        self.beta = beta  # tolerance
-
         self.LAMBDA_LR = 0.01
-
         self.cumulative_cost = 0
 
-        self.action_size: int = action_size
-        self.is_action_cont = is_action_cont
+        self.alpha: float = train_params.alpha  # constraint
+        self.beta: float = train_params.beta  # tolerance
 
-        self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont, extra_input=True)
-        self.critic = make_network('prediction', network, in_size, hidden, 1, is_action_cont, extra_input=True)
+
+        self.action_size: int = action_size
+        self.is_action_cont: bool = is_action_cont
+
+        self.actor = make_network('policy', train_params.network, in_size, hidden, action_size, is_action_cont, extra_input=True)
+        self.critic = make_network('prediction', train_params.network, in_size, hidden, 1, is_action_cont, extra_input=True)
 
         self.lamb = random.random()
 
@@ -711,19 +698,19 @@ class VaR_AC:
 #     # Policy Gradient for VaR-constrained problems
 #     # https://stanfordasl.github.io/wp-content/papercite-data/pdf/Chow.Ghavamzadeh.Janson.Pavone.JMLR18.pdf
 #
-#     def __init__(self, action_size, alpha, beta, in_size=4, network='DNN', hidden=16, is_action_cont=False):
+#     def __init__(self, action_size, alpha, beta, in_size=4, network='DNN', hidden, is_action_cont=False):
 #
 #         self.t = 0  # total number of frames observed
 #         self.discount = 0.99  # discount
 #
-#         self.alpha = alpha  # constraint
-#         self.beta = beta  # tolerance
+#         self.alpha: float = train_params.alpha  # constraint
+#         self.beta: float = train_params.beta  # tolerance
 #         self.lamb = random.random()
 #
 #         self.LAMBDA_LR = 0.01
 #
 #         self.action_size: int = action_size
-#         self.is_action_cont = is_action_cont
+#         self.is_action_cont: bool = is_action_cont
 #
 #         self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont)
 #

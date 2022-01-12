@@ -32,7 +32,7 @@ class Env:
 class CartSafe(Env):
     state_repr_size = 4
     action_size = 2
-    rec_hid_width = 8
+    rec_hid_width = 32  # TODO - how do we change this between models? add to params?
     is_action_cont = False
     rec_ep_length = 300
     rec_tabular_q_init = 300
@@ -121,7 +121,7 @@ class ThreeArmedBandit(Env):
     def step(self, action):
         self.episode_interacts += 1
         assert (action in [0, 1, 2])
-        reward = self.mus[int(action)] + np.random.uniform(low=-0.3, high=0.3)
+        reward = self.mus[int(action)] + np.random.uniform(low=-0.2, high=0.2)
 
         # next_state, reward, done, info
         return 0, reward, (self.episode_interacts >= 100), {}

@@ -25,7 +25,7 @@ from src.TrainingParameters import TrainingParameters
 gym.logger.set_level(40)
 
 from torch.utils.tensorboard import SummaryWriter
-from src.make_agent import make_agent
+from src.agents.make_agent import make_agent
 from src.constants import agent_names
 from src.envs import *
 
@@ -37,15 +37,15 @@ class InteractIter:
     def __init__(self, max_interactions: int):
         self._max_interactions = max_interactions
         self._cur_interactions = 0
-        self._cur_iterations = 0
+        self._cur_episodes = 0
 
     def __iter__(self):
         return self
 
     def __next__(self):
         if self._max_interactions >= self._cur_interactions:
-            self._cur_iterations += 1
-            return self._cur_iterations
+            self._cur_episodes += 1
+            return self._cur_episodes
         else:
             raise StopIteration()
 
@@ -62,8 +62,7 @@ def train_from_params(train_params: TrainingParameters,
 
     agent, mode = make_agent(agent_name=train_params.agent_name,
                              env=env,
-                             train_params=train_params,
-                             network=train_params.network)
+                             train_params=train_params)
 
     process_id = str(time.time())[-5:]
     seed = int(process_id)
@@ -80,83 +79,59 @@ def train_from_params(train_params: TrainingParameters,
 
     max_ep_length = env.rec_ep_length
 
-    total_interacts = 0
+    state = env.reset()
+    state = np.expand_dims(state, axis=0)
+    state = torch.tensor(state).float().to(device)
 
-    if not train_params.is_interact_mode:
-        interact_iter = "Undefined"
-        if show_ep_prog_bar:
-            episode_iter = tqdm(range(train_params.num_episodes), colour="green")
+    interact_iter = tqdm(range(train_params.num_interacts), colour="green", desc="Interacts")
+    interacts_this_ep = 0
+    for i in interact_iter:
+
+        action = agent.act(state)
+        interacts_this_ep += 1
+
+        if not env.is_action_cont:
+            action = int(action)
+        if type(action) != int:
+            action = action.squeeze().cpu().float()
+
+        next_state, reward, done, info = env.step(action)
+        next_state = np.expand_dims(next_state, axis=0)
+        next_state = torch.tensor(next_state).float().to(device)
+
+        if "cost" in info.keys():
+            cost = info["cost"]
+        elif "constraint_costs" in info.keys():
+            cost = info['constraint_costs'][0]
         else:
-            episode_iter = range(train_params.num_episodes)
-    else:
-        interact_iter = InteractIter(train_params.num_interacts)
+            cost = 0
 
-        if show_ep_prog_bar:
-            episode_iter = tqdm(interact_iter)
+        if mode==1:
+            r = reward
+        elif mode==2:
+            r = reward-cost
+        elif mode==3:
+            r = [-cost, reward]
+        elif mode==4:
+            r = [reward, cost]
+        elif mode==5:
+            r = [reward, -cost]
+
+        agent.step(state, action, r, next_state, done)
+
+        if done or (interacts_this_ep >= max_ep_length):
+            interacts_this_ep = 0
+            state = env.reset()
+            state = np.expand_dims(state, axis=0)
+            state = torch.tensor(state).float().to(device)
         else:
-            episode_iter = interact_iter
-
-    # ========== TRAINING LOOP ==========
-    for i in episode_iter:
-        state = env.reset()
-        state = np.expand_dims(state, axis=0)
-        state = torch.tensor(state).float().to(device)
-
-        cum_reward = 0
-        cum_cost = 0
-
-        for j in range(max_ep_length):
-            action = agent.act(state)
-
-            total_interacts += 1
-            if train_params.is_interact_mode:
-                interact_iter.increment()
-
-            if env.is_action_cont:
-                action = int(action)
-            if type(action) != int:
-                action = action.squeeze().cpu().float()
-
-            next_state, reward, done, info = env.step(action)
-
-            next_state = np.expand_dims(next_state, axis=0)
-            next_state = torch.tensor(next_state).float().to(device)
-
-            try:
-                cost = info['cost']
-            except:
-                try:
-                    cost = info['constraint_costs'][0]
-                except:
-                    cost = 0
-
-            if mode == 1:
-                r = reward
-            elif mode == 2:
-                r = reward - cost
-            elif mode == 3:
-                r = [-cost, reward]
-            elif mode == 4:
-                r = [reward, cost]
-            elif mode == 5:
-                r = [reward, -cost]
-
-            cum_reward += reward
-            cum_cost += cost
-
-            agent.step(state, action, r, next_state, done)
-
-            if done:
-                break
-
             state = next_state
 
         if train_params.save_every_n is not None and i % train_params.save_every_n == 0:
             agent.save_model(run_dir)
 
-        writer.add_scalar(f"{train_params.env_name}/Reward", cum_reward, i)
-
-        writer.add_scalar(f"{train_params.env_name}/Cost", cum_cost, i)
+        writer.add_scalar(f"{train_params.env_name}/Reward", reward, i)
+        writer.add_scalar(f"{train_params.env_name}/Cost", cost, i)
 
     agent.save_model(run_dir)
     writer.flush()
@@ -174,9 +149,7 @@ def get_train_params_from_args():
     parser.add_argument("--env_name", type=str, default="Bandit", choices=env_names,
                         help="The name of the game to train on")
 
-    parser.add_argument("--num_episodes", type=int, default=10, help="The number of episodes to train on")
-
-    # TODO IMPLEMENT NUM_INTERACTS
+    parser.add_argument("--num_interacts", type=int, default=1e4, help="The number of interacts to train on")
 
     parser.add_argument("--network", choices=["DNN", "CNN"], default="DNN")
     args = parser.parse_args()

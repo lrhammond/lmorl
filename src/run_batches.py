@@ -21,10 +21,17 @@ def run_test_group(test_group_label: str, test_group_params: list):
 
     # Create a dummy writer to bait out tensorflow warnings before tqdm
     SummaryWriter()
+    print()
+    print("Run this to see results:")
+    print(f"cd ~/lmorl && source venv/bin/activate && tensorboard --logdir={session_pref}")
+    print()
 
-    pbar = tqdm(test_group_params, colour="blue")
+    if len(test_group_params) >= 2:
+        pbar = tqdm(test_group_params, colour="blue")
+    else:
+        pbar = test_group_params
+
     for train_params in pbar:
-        pbar.set_description(f"{len(successes)}S:{len(failures)}F")
         try:
             train_from_params(train_params=train_params,
                               session_pref=session_pref)
@@ -42,8 +49,10 @@ def run_test_group(test_group_label: str, test_group_params: list):
         print("FAILURES:")
         raise Exception(failures)
 
+    print()
     print("Run this to see results:")
     print(f"cd ~/lmorl && source venv/bin/activate && tensorboard --logdir={session_pref}")
+    print()
 
 
 if __name__ == "__main__":
