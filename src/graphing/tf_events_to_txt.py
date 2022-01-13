@@ -13,14 +13,14 @@ def convert_tf_to_txt(p):
             if "Reward" in val.tag: rewards.append(val.simple_value)
             if "Cost" in val.tag: costs.append(val.simple_value)
     assert(len(rewards) == len(costs))
-    p = p.replace("events.out.tfevents.", "")
-    p = p.replace("data/", "")
-    mid_name = os.path.split(p)[1:-1]
-    file_name = os.path.split(p)[-1].replace("events.out.tfevents.", "") + ".txt"
-    dir_name = os.path.join("data", "txts", *mid_name)
+    mid_name = os.path.split(p)[0].replace("data/", "")
+    print(mid_name, "mid_name")
+    file_name = os.path.split(p)[1].replace("events.out.tfevents.", "") + ".txt"
+    dir_name = os.path.join("data", "txts", mid_name)
     os.makedirs(dir_name, exist_ok=True)
     txt_p = os.path.join(dir_name, file_name)
     assert (not os.path.exists(txt_p)), f"path {txt_p} already exists"
+    print(txt_p)
     with open(txt_p, 'w') as f:
         for i, (r, c) in enumerate(zip(rewards, costs)):
             f.write('{},{}\n'.format(i, r, c))
