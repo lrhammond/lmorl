@@ -22,7 +22,7 @@ def convert_tf_to_txt(p):
     assert (not os.path.exists(txt_p)), f"path {txt_p} already exists"
     with open(txt_p, 'w') as f:
         for i, (r, c) in enumerate(zip(rewards, costs)):
-            f.write('{},{}\n'.format(i, r, c))
+            f.write('{},{}\n'.format(r, c))
 
 
 if __name__ == "__main__":

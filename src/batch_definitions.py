@@ -106,6 +106,16 @@ batch_definitions = {
         for agent_name in disc_agent_names for env_name in ["CartSafe"]
     ],
 
+    "recreating_fig2_CartSafe_really_short": [
+        TrainingParameters(
+            agent_name=agent_name,
+            env_name=env_name,
+            num_interacts=int(1e3),
+            test_group_label="recreating_fig2_CartSafe_long")
+
+        for agent_name in disc_agent_names for env_name in ["CartSafe"]
+    ],
+
     "fig3_short": [
         TrainingParameters(
             agent_name="LDQN",
