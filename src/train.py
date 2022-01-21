@@ -147,11 +147,11 @@ def get_train_params_from_args():
     # TODO - add option for num interacts
     parser = argparse.ArgumentParser(description="Run lexico experiments")
 
-    parser.add_argument("--agent_name", type=str, default="tabular", choices=agent_names,
-                        help="The name of the type of agent")
-
     parser.add_argument("--env_name", type=str, default="Bandit", choices=env_names,
                         help="The name of the game to train on")
+
+    parser.add_argument("--agent_name", type=str, default="tabular", choices=agent_names,
+                        help="The name of the type of agent")
 
     parser.add_argument("--num_interacts", type=int, default=1e4, help="The number of interacts to train on")
 

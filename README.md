@@ -1,77 +1,44 @@
 # Lexicographic Multi-Objective Reinforcement Learning
 
-## Setup
+## Installation
 
-Note that the instructions below require a valid [MuJoCo](http://www.mujoco.org/) installation and license due to the use of [OpenAI Safety Gym](https://github.com/openai/safety-gym).
-
-### Default
-
-Begin by cloning and entering the repository:
-
-```
-git clone https://github.com/lrhammond/lmorl.git
-cd lmorl
-```
-
-Then, set up your Python environment to taste (for example, by using `virtualenv`, or `conda`). The following instructions are given using `pip`, though your preferred package manager may vary. Install the required packages using the following (note that this step assumes a valid installation of MuJoCo at the `$HOME/.mujoco/mujoco200` and a valid license key at `$HOME/.mujoco/mjkey.txt`):
-
-```
-pip install numpy==1.20.1
-pip install -r requirements.txt
-```
-
-In the commands above, `numpy` is deliberately installed first due to a supposed (but unsubstantiated) inconsistency with `safety-gym`. Finally, create two extra sub-directories of `lmorl` (that are used for recording and logging data from experiments) by running:
-
-```
-mkdir results logs
-```
-
-### ARC
-
-If using [ARC](https://www.arc.ox.ac.uk/) then first navigate to your home directory (use `cd $HOME` on `arcus-htc`). Begin by cloning and entering the repository:
-
-```
-git clone https://github.com/lrhammond/lmorl.git
-cd lmorl
-```
-
-The remaining setup steps are automated, but assumes that there is a valid MuJoCo license located at `$HOME/.mujoco/mjkey.txt`. Finish the setup by running:
-
-```
-sh arc.sh
-``` 
-
-This will activate the relevant ARC modules, create a `conda` environment `venv` with all the required packages, and create any extra required sub-directories.
+To view installation instructions, go to [INSTALLATION.md](https://github.com/lrhammond/lmorl/blob/main/INSTALLATION.md)
 
 ## Running Experiments
 
 ### Default
-To test you installation, run:
-```commandline
+To test your installation, run:
+``` commandline
 python -m src.run_batches humble_batch
 ```
 
-Individual experiments may be run using:
-```commandline
-python -m src.train --agent_name=\_ --env_name=\_ --num_episodes=\_
+Some individual experiments may be run using:
+``` commandline
+python -m src.train --agent_name=_ --env_name=_ --num_episodes=_
 ```
 
-
-[//]: # (```)
-
-[//]: # (python src/main.py <agent_name> <robot> <task> <difficulty> <episodes> <iteration>)
-
-[//]: # (```)
-
-### ARC
-
-Individual experiments may be submitted to ARC using the command:
-
-```
-sbatch experiment.sh <agent_name> <robot> <task> <difficulty> <episodes> <iteration>
+### Running Batches
+To simplify training and running experiments, we use a "batch" system. 
+The class `TrainingParameters` specifies all of the information needed to train a single agent on a particular environment.
+The file `batch_definitions` contains "batches": lists of instances of `TrainingParameter` used to specify a sequence of training runs.
+For example, the following batch would compare `DQN` and `AC` in the `CartSafe` environment:
+``` python
+"DQN_vs_AC": [
+    TrainingParameters( agent_name="DQN", env_name="CartSafe"),
+    TrainingParameters( agent_name="AC", env_name="CartSafe"),    
+],
 ```
 
-To run all experiments, use `sh run_all.sh` instead.
+You can run these predefined batches using the `run_batches.py file`:
+```
+python -m src.run_batches DQN_vs_AC
+```
+
+## Project structure
+As above, `run_batches.py` and `batch_definitions.py` define meta-level code for managing experiments.
+The file `train.py` run individual experiments and controls the state-agent interaction loop.
+Individual agents are defined in the `agents` directory and environments in the `envs.py` file.
+The `graphing` directory contains code for generating the graphs included in the paper.
 
 ## Questions?
 

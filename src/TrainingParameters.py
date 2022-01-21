@@ -17,24 +17,24 @@ inconsistent_parameters = {
 class TrainingParameters:
     # dataclass attributes created in __init__ and address by self.
     # TODO - perhaps add validation to check when unnecessary parameters are specified e.g. batch_size for tabular
-    env_name: str
-    agent_name: str
-    network: str = "DNN"
+    env_name: str  # the str representing the environment, found in src.constants.env_names
+    agent_name: str  # the str representing the agent, found in src.constants.agent_names
+    network: str = "DNN"  # The type of network to use within an agent ("DNN" or "CNN")
 
-    num_episodes: int = None
-    num_interacts: int = None
+    num_episodes: int = None  # Currently deprecated
+    num_interacts: int = None  # The number of interactions between agent and environment during training
 
-    test_group_label: str = None
-    save_every_n: int = None
+    test_group_label: str = None  # A label used to identify a batch of experiments
+    save_every_n: int = None  # How frequently should copies of the model be saved during training?
 
-    buffer_size: int = int(1e4)
-    batch_size: int = 4
-    update_every: int = 4
-    update_every_eps = 1
-    update_steps: int = 10
+    buffer_size: int = int(1e4)  # PyTorch buffer size to use during training
+    batch_size: int = 4  # PyTorch batch size to use during training
+    update_every: int = 4  # After how many interacts should we update the model?
+    update_every_eps = 1  # Deprecated
+    update_steps: int = 10  # Used by LDQN
 
-    epsilon: float = 0.05
-    slack: float = 0.001
+    epsilon: float = 0.05  # Hyperparameter used in epsilon-greedy algorithms (and others)
+    slack: float = 0.001  # Hyperparameter used by lexicographic algorithms
 
     learning_rate: float = 1e-3
 
