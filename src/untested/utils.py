@@ -3,17 +3,17 @@
 from itertools import product
 
 # Constants
-UPDATE_EVERY = 4
-BUFFER_SIZE = int(1e6)
-BATCH_SIZE = 32
-EPSILON = 0.05
-LAMBDA_RL_2 = 0.05
-UPDATE_EVERY_EPS = 32
-SLACK = 0.04
-TOL = 1
-CONVERGENCE_LENGTH = 1000
-CONVERGENCE_DEVIATION = 0.04
-TOL2 = 1
+# UPDATE_EVERY = 4
+# BUFFER_SIZE = int(1e6)
+# BATCH_SIZE = 32
+# EPSILON = 0.05
+# LAMBDA_RL_2 = 0.05
+# UPDATE_EVERY_EPS = 32
+# SLACK = 0.04
+# TOL = 1
+# CONVERGENCE_LENGTH = 1000
+# CONVERGENCE_DEVIATION = 0.04
+# TOL2 = 1
 
 ##################################################
 
