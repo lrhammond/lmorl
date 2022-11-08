@@ -153,7 +153,7 @@ def get_train_params_from_args():
     parser.add_argument("--agent_name", type=str, default="tabular", choices=agent_names,
                         help="The name of the type of agent")
 
-    parser.add_argument("--num_interacts", type=int, default=1e4, help="The number of interacts to train on")
+    parser.add_argument("--num_episodes", type=int, default=1e4, help="The number of interacts to train on")
 
     parser.add_argument("--network", choices=["DNN", "CNN"], default="DNN")
     args = parser.parse_args()
