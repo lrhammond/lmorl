@@ -74,8 +74,9 @@ def train_from_params(train_params: TrainingParameters,
     writer = SummaryWriter(log_dir=run_dir)
     train_params.render_to_file(run_dir + ".params")
 
-    if train_params.num_episodes == -1:
-        train_params.num_episodes = env.rec_episodes
+    if train_params.num_episodes is not None:
+        raise NotImplementedError("episodic mode is deprecated, use num_interacts instead")
+
     if train_params.num_interacts == -1:
         train_params.num_interacts = env.rec_interacts
 
@@ -160,7 +161,7 @@ def get_train_params_from_args():
 
     return TrainingParameters(agent_name=args.agent_name,
                               env_name=args.env_name,
-                              num_episodes=args.num_episodes,
+                              num_interacts=args.num_interacts,
                               network=args.network)
 
 
