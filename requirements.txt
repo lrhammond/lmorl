@@ -1,6 +1,16 @@
 # Installing safety-gym should install all other necessary dependencies including gym, numpy, etc.
 torch==1.7.1
 torch-vision==0.1.6.dev0
--e git+https://github.com/openai/safety-gym.git#egg=safety-gym
+matplotlib==3.5.1
+opencv-python==4.5.5.62
+tqdm
+scipy
+tensorboard
+
+# TROUBLEMAKERS
+# This is installed with openai safety gym but often fails so call it separately
+# mujoco-py==2.0.2.7
+# -e git+https://github.com/openai/safety-gym.git#egg=safety-gym
+
 -e git+https://github.com/jemaw/gym-safety.git#egg=gym-safety
 -e git+https://github.com/riveSunder/OpenSafety.git#egg=open_safety

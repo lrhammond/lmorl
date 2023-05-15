@@ -4,7 +4,7 @@ class OldLexActorCritic:
     
     # lexicographic actor-critic
     
-    def __init__(self, in_size, action_size, reward_size=2, network='DNN', hidden=16, continuous=False, sequential=False):
+    def __init__(self, in_size, action_size, reward_size=2, network='DNN', hidden=16, is_action_cont=False, sequential=False):
             
         self.t = 0                                   # total number of frames observed
         self.eps = 0                                 # total number of episodes completed
@@ -23,7 +23,7 @@ class OldLexActorCritic:
         
         # LH: solve constrained problems sequentially or synchronously (defaults to false)
         self.sequential = sequential
-        self.continuous = continuous
+        self.is_action_cont = is_action_cont
         
         # LH: not totally sure how to extract this from the environment... (TODO), should be an 1 x |S| probability vector
         # self.initial_dist = initial_dist
@@ -37,8 +37,8 @@ class OldLexActorCritic:
         self.grads = [collections.deque(maxlen=self.prev) for r in range(reward_size)]
         self.current = 0
         
-        self.actor = make_network('policy', network, in_size, hidden, action_size, continuous)
-        self.critic = make_network('prediction', network, in_size, hidden, reward_size, continuous)
+        self.actor = make_network('policy', network, in_size, hidden, action_size, is_action_cont)
+        self.critic = make_network('prediction', network, in_size, hidden, reward_size, is_action_cont)
 
         self.memory = ReplayBuffer(BUFFER_SIZE, BATCH_SIZE)
         
@@ -70,7 +70,7 @@ class OldLexActorCritic:
             return True
 
     def act(self, state):
-        if self.continuous:
+        if self.is_action_cont:
             mu, var = self.actor(state)
             mu = mu.data.cpu().numpy()
             sigma = torch.sqrt(var).data.cpu().numpy() 
@@ -154,7 +154,7 @@ class OldLexActorCritic:
             outcome  = rewards[:,r].unsqueeze(-1) + (self.discount * self.critic(next_states.to(device))[:,r].unsqueeze(-1) * (1-dones))
             advantage = (outcome - baseline).detach()        
 
-        if self.continuous:
+        if self.is_action_cont:
             means, variances = self.actor(states.to(device))
             p1 = - ((means - actions) ** 2) / (2 * variances.clamp(min=1e-3))
             p2 = - torch.log(torch.sqrt(2 * math.pi * variances))

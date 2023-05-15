@@ -8,6 +8,7 @@ import time
 from itertools import count
 import os, sys, math
 from multiprocessing import Pool
+import cv2
 
 import gym
 #import safety_gym
@@ -51,13 +52,13 @@ device = torch.device("cpu")
 
 ##################################################
 
-def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN', continuous=False, alt_lex=False):
+def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN', is_action_cont=False, alt_lex=False):
 
     prioritise_performance_over_safety = False
 
     if agent_name=='AC':
         agent = ActorCritic(action_size=action_size, in_size=in_size,
-                                network=network, hidden=hidden, continuous=continuous)
+                                network=network, hidden=hidden, is_action_cont=is_action_cont)
         mode = 1
 
     elif agent_name=='DQN':
@@ -75,17 +76,17 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
     elif agent_name=='RCPO':
         agent = RCPO(action_size=action_size, constraint=0.1, in_size=in_size,
-                         network=network, hidden=hidden, continuous=continuous)
+                         network=network, hidden=hidden, is_action_cont=is_action_cont)
         mode = 4
 
     elif agent_name=='VaR_PG':
         agent = VaR_PG(action_size=action_size, alpha=1, beta=0.95, in_size=in_size,
-                           network=network, hidden=hidden, continuous=continuous)
+                           network=network, hidden=hidden, is_action_cont=is_action_cont)
         mode = 4
 
     elif agent_name=='VaR_AC':
         agent = VaR_AC(action_size=action_size, alpha=1, beta=0.95, in_size=in_size,
-                           network=network, hidden=hidden, continuous=continuous)
+                           network=network, hidden=hidden, is_action_cont=is_action_cont)
         mode = 4
 
     elif agent_name=='AproPO':
@@ -96,7 +97,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
                        reward_size=2,
                        network=network,
                        hidden=16,
-                       continuous=continuous)
+                       is_action_cont=is_action_cont)
         mode = 4
 
     elif agent_name=='tabular':
@@ -104,12 +105,12 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
         mode = 1
 
     elif agent_name=='random':
-        agent = RandomAgent(action_size=action_size, continuous=continuous)
+        agent = RandomAgent(action_size=action_size, is_action_cont=is_action_cont)
         mode = 1
 
     elif agent_name=='LA2C':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=False,
-                               reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
+                               reward_size=2, network='DNN', hidden=hidden, sequential=False, is_action_cont=is_action_cont)
         if prioritise_performance_over_safety:
             mode = 5
         else:
@@ -117,7 +118,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
     elif agent_name=='seqLA2C':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=False,
-                               reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
+                               reward_size=2, network='DNN', hidden=hidden, sequential=True, is_action_cont=is_action_cont)
         if prioritise_performance_over_safety:
             mode = 5
         else:
@@ -125,7 +126,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
     elif agent_name=='LPPO':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=False,
-                               reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
+                               reward_size=2, network='DNN', hidden=hidden, sequential=False, is_action_cont=is_action_cont)
         if prioritise_performance_over_safety:
             mode = 5
         else:
@@ -133,7 +134,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
     elif agent_name=='seqLPPO':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=False,
-                               reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
+                               reward_size=2, network='DNN', hidden=hidden, sequential=True, is_action_cont=is_action_cont)
         if prioritise_performance_over_safety:
             mode = 5
         else:
@@ -141,7 +142,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
     elif agent_name=='LA2C2nd':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
-                               reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
+                               reward_size=2, network='DNN', hidden=hidden, sequential=False, is_action_cont=is_action_cont)
         if prioritise_performance_over_safety:
             mode = 5
         else:
@@ -149,7 +150,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
     elif agent_name=='seqLA2C2nd':
         agent = ActorCritic(in_size=in_size, action_size=action_size, mode='a2c', second_order=True,
-                               reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
+                               reward_size=2, network='DNN', hidden=hidden, sequential=True, is_action_cont=is_action_cont)
         if prioritise_performance_over_safety:
             mode = 5
         else:
@@ -157,7 +158,7 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
     elif agent_name=='LPPO2nd':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=True,
-                               reward_size=2, network='DNN', hidden=hidden, sequential=False, continuous=continuous)
+                               reward_size=2, network='DNN', hidden=hidden, sequential=False, is_action_cont=is_action_cont)
         if prioritise_performance_over_safety:
             mode = 5
         else:
@@ -165,11 +166,22 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
     elif agent_name=='seqLPPO2nd':
         agent = LexActorCritic(in_size=in_size, action_size=action_size, mode='ppo', second_order=True,
-                               reward_size=2, network='DNN', hidden=hidden, sequential=True, continuous=continuous)
+                               reward_size=2, network='DNN', hidden=hidden, sequential=True, is_action_cont=is_action_cont)
         if prioritise_performance_over_safety:
             mode = 5
         else:
             mode = 3
+
+    elif agent_name=='LexTabular':
+        agent = LexTabular(action_size=action_size)
+        if prioritise_performance_over_safety:
+            mode = 5
+        else:
+            mode = 3
+
+    elif agent_name=='invLexTabular':
+        agent = LexTabular(action_size=action_size)
+        mode = 5
 
     else:
         print('invalid agent specification')
@@ -182,49 +194,61 @@ def make_agent(agent_name, in_size=60, action_size=4, hidden=256, network='DNN',
 
 ##################################################
 
-agent_name = 'DQN'
-game = 'MountainCarSafe'
-version = 0
+agent_name = 'AC'
 
-i_s = 2
-a_s = 3
-hid = 32
-cont = False
-int_action=True
+agent, mode = make_agent(agent_name, 625, 4, 32, 'DNN', False, alt_lex=False)
 
-agent, mode = make_agent(agent_name, i_s, a_s, hid, 'DNN', cont, alt_lex=False)
+env = gym.make('GridNav-v0')
 
 import matplotlib.pyplot as plt
 
-for _,_, files in os.walk('../results/MountainCarSafe/DQN/'):
-    for file in filter(lambda file: '.pt' in file, files):
-        agent.load_model('../results/MountainCarSafe/DQN/'+file[:-9])
+for _,_, files in os.walk('../results/GridNav/{}/'.format(agent_name)):
+    for file in filter(lambda file: '.txt' in file, files):
 
-        x = []
-        y = []
-        colours = []
+        print(file)
+        
+        agent.load_model('../results/GridNav/{}/'.format(agent_name)+file[:-4])
 
-        for pos in np.arange(-1.2, 0.6, 0.03):
-            for vel in np.arange(-0.07, 0.07, 0.003):
+        up    = []
+        down  = []
+        right = []
+        left  = []
+
+        for s in range(0, env.gridsize**2):
                 
-                x.append(pos)
-                y.append(vel)
+            state = np.zeros((1,env.gridsize**2))
+            state[0,s] = 1
+            state = torch.tensor(state).float()
+            
+            lst = [agent.act(state) for _ in range(25)]
+            action = int(max(set(lst), key=lst.count))
 
-                s = np.asarray([pos, vel])
-                s = np.expand_dims(s, axis=0)
-                s = torch.tensor(s).float().to(device)
-                
-                lst = [agent.act(s) for _ in range(10)]
-                action = max(set(lst), key=lst.count)
-                if action == 0:
-                    colours.append('r')
-                if action == 1:
-                    colours.append('y')
-                if action == 2:
-                    colours.append('g')
+            if action == 2:
+                down.append(s)
+            elif action == 1:
+                left.append(s)
+            elif action == 0:
+                up.append(s)
+            elif action == 3:
+                right.append(s)
 
-        plt.scatter(x,y,c=colours)
-        plt.savefig('../' + file[:-3] + '.png')
+        img = env.state_to_img()
+        #img = cv2.resize(img, (env.display_size,env.display_size), interpolation=cv2.INTER_NEAREST)
+
+        fig = plt.figure(0)
+        plt.clf()
+        plt.imshow(img)
+        fig.canvas.draw()
+
+        plt.plot([s % env.gridsize for s in up], [int(s/env.gridsize) for s in up], '^')
+        plt.plot([s % env.gridsize for s in right], [int(s/env.gridsize) for s in right], '>')
+        plt.plot([s % env.gridsize for s in left], [int(s/env.gridsize) for s in left], '<')
+        plt.plot([s % env.gridsize for s in down], [int(s/env.gridsize) for s in down], 'v')
+
+        #plt.plot([624 % env.gridsize],[int(624/env.gridsize)],'x')
+        
+        plt.savefig('../results/GridNav/' + file[:-4] + '.png')
+        plt.close()
 
 ##for param in agent.critic.parameters():
 ##    print(param.shape)
