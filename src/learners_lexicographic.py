@@ -13,7 +13,7 @@ from torch.distributions import Categorical
 from torch.autograd import Variable
 
 # Constants
-UPDATE_EVERY = 4
+UPDATE_EVERY = 16
 BUFFER_SIZE = int(1e4)
 BATCH_SIZE = 128
 
@@ -21,11 +21,6 @@ EPSILON = 0.05
 SLACK = 0.05
 #LAMBDA_RL_2 = 0.05
 #UPDATE_EVERY_EPS = 32
-
-TOL = 1
-TOL2 = 1
-CONVERGENCE_LENGTH = 1000
-CONVERGENCE_DEVIATION = 0.04
 
 NO_CUDA = True
 
@@ -151,7 +146,7 @@ class LexActorCritic:
         self.critic = make_network('prediction', network, in_size, hidden, reward_size, continuous, extra_input)
         self.mu = [0.0 for _ in range(reward_size - 1)]
         self.j = [0.0 for _ in range(reward_size - 1)]
-        self.recent_losses = [collections.deque(maxlen=25) for i in range(reward_size)]
+        self.recent_losses = [collections.deque(maxlen=50) for i in range(reward_size)]
 
         # If updating the actor sequentially (one objective at a time) we need to keep track of which objective we're using
         self.i = 0 if sequential else None
@@ -251,7 +246,7 @@ class LexActorCritic:
         if self.i != None:
             if not self.converged():
                 if self.i != self.reward_size - 1:
-                    self.j[self.i] = -torch.tensor(self.recent_losses[self.i]).mean()
+                    self.j[self.i] = -torch.tensor(self.recent_losses[self.i][25:]).mean()
                     if self.second_order:
                         self.grad_j[self.i] = -torch.stack(tuple(self.recent_grads[self.i]), dim=0).mean(dim=0)
             else:
@@ -260,18 +255,18 @@ class LexActorCritic:
                 
         else:
             for i in range(self.reward_size - 1):
-                self.j[i] = -torch.tensor(self.recent_losses[i]).mean()
+                self.j[i] = -torch.tensor(self.recent_losses[i][25:]).mean()
                 if self.second_order:
                     self.grad_j[i] = -torch.stack(tuple(self.recent_grads[i]), dim=0).mean(dim=0)
 
         # Update Lagrange parameters
         r = self.i if self.i != None else self.reward_size - 1
         for i in range(r):
-            self.mu[i] += self.eta[i] * (self.j[i] - self.recent_losses[i][-1])
+            self.mu[i] += self.eta[i] * (self.j[i] - (-self.recent_losses[i][-1]))
             self.mu[i] = max(self.mu[i], 0.0)
             if self.second_order:
                 self.lamb[i].train()
-                loss = self.lamb[i](torch.unsqueeze(self.grad_j[i] - self.recent_grads[i][-1], 0).to(device)).to(device)
+                loss = self.lamb[i](torch.unsqueeze(self.grad_j[i] - (-self.recent_grads[i][-1], 0)).to(device)).to(device)
                 self.lagrange_optimizer[i].zero_grad()
                 loss.backward()
                 self.lagrange_optimizer[i].step()
@@ -283,22 +278,18 @@ class LexActorCritic:
         self.update_critic(experiences)
         self.update_lagrange()
 
-    
-    def converged(self, tolerance=0.1, bound=0.01, minimum_updates=5):
+    # If updating sequentially, check whether previous loss has converged
+    def converged(self, tolerance=0.1, minimum_updates=50):
 
         # If not enough updates have been performed, assume not converged
         if len(self.recent_losses[self.i]) < minimum_updates:
             return False
+        # Else check if the loss has stopped improving, within some tolerance
         else:
-            l_mean = torch.tensor(self.recent_losses[self.i]).mean().float()
-            # If the mean loss is lower than some absolute bound, assume converged
-            if l_mean < bound:
-                return True
-            # Else check if the max of the recent losses are sufficiently close to the mean, if so then assume converged
-            else:
-                l_max = max(self.recent_losses[self.i]).float()
-                if l_max > (1.0 + tolerance) * l_mean:
-                    return False
+            l_old_mean = torch.tensor(self.recent_losses[self.i][:24]).mean().float()
+            l_new_mean = torch.tensor(self.recent_losses[self.i][25:]).mean().float()
+            if abs(l_old_mean - l_new_mean)/abs(l_new_mean) > tolerance:
+                return False
         
         return True
 
@@ -356,13 +347,13 @@ class LexActorCritic:
                 second_order_terms = [self.lamb[i](scores.to(device)) * second_order_weighted_advantages for i in range(reward_range - 1)]
                 loss = -(log_probs * first_order_weighted_advantages + sum(second_order_terms)).mean().to(device)
                 for i in range(self.reward_size):
-                    self.recent_losses[i].append((log_probs * advantage[:,i]).mean())
+                    self.recent_losses[i].append(-(log_probs * advantage[:,i]).mean())
                     if i != self.reward_size - 1:
-                        self.recent_grads[i].append((advantage[:,i] * torch.transpose(scores,0,1)).mean(dim=1))
+                        self.recent_grads[i].append(-(advantage[:,i] * torch.transpose(scores,0,1)).mean(dim=1))
             else:
                 loss = -(log_probs * first_order_weighted_advantages).mean().to(device)
                 for i in range(self.reward_size):
-                    self.recent_losses[i].append((log_probs * advantage[:,i]).mean())
+                    self.recent_losses[i].append(-(log_probs * advantage[:,i]).mean())
         
         # Computer PPO loss
         if self.mode == 'ppo':
@@ -385,13 +376,13 @@ class LexActorCritic:
                 second_order_terms = [self.lamb[i]((ratio_grads * torch.unsqueeze(second_order_weighted_advantages, dim=1) - relative_kl_weights[i] * kl_grads).to(device)) for i in range(reward_range - 1)]
                 loss =  -(ratios * first_order_weighted_advantages - self.kl_weight * kl_penalty + sum(second_order_terms)).mean().to(device)
                 for i in range(self.reward_size):
-                    self.recent_losses[i].append((ratios * advantage[:,i] - relative_kl_weights[i] * kl_penalty).mean())
+                    self.recent_losses[i].append(-(ratios * advantage[:,i] - relative_kl_weights[i] * kl_penalty).mean())
                     if i != self.reward_size - 1:
-                        self.recent_grads[i].append((ratio_grads * torch.unsqueeze(advantage[:,i], dim=1) - relative_kl_weights[i] * kl_grads).mean(dim=0))
+                        self.recent_grads[i].append(-(ratio_grads * torch.unsqueeze(advantage[:,i], dim=1) - relative_kl_weights[i] * kl_grads).mean(dim=0))
             else:
                 loss = -(ratios * first_order_weighted_advantages - self.kl_weight * kl_penalty).mean().to(device)
                 for i in range(self.reward_size):
-                    self.recent_losses[i].append((ratios * advantage[:,i] - relative_kl_weights[i] * kl_penalty).mean())
+                    self.recent_losses[i].append(-(ratios * advantage[:,i] - relative_kl_weights[i] * kl_penalty).mean())
                 
                 # n = torch.tensor(float('nan'))
                 # m = torch.tensor(float('inf'))
@@ -410,7 +401,7 @@ class LexActorCritic:
             # Update KL weight term as in the original PPO paper
             if kl_penalty.mean() < self.kl_target / 1.5:
                 self.kl_weight *= 0.5
-            else:
+            elif kl_penalty.mean() > self.kl_target * 1.5:
                 self.kl_weight *= 2
         
         return loss
